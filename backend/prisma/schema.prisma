@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id         String     @id @default(uuid()) @db.Uuid
+  email      String     @unique
+  password   String
+  name       String?
+  locations  Location[]
+  categories Category[]
+  items      Item[]
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model Location {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  userId    String   @map("user_id") @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     Item[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("locations")
+}
+
+model Category {
+  id               String     @id @default(uuid()) @db.Uuid
+  name             String
+  userId           String     @map("user_id") @db.Uuid
+  parentCategoryId String?    @map("parent_category_id") @db.Uuid
+  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent           Category?  @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id], onDelete: SetNull)
+  children         Category[] @relation("CategoryHierarchy")
+  items            Item[]
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([parentCategoryId])
+  @@unique([userId, name, parentCategoryId])
+  @@map("categories")
+}
+
+model Item {
+  id             String    @id @default(uuid()) @db.Uuid
+  name           String
+  quantity       Float
+  unit           String
+  userId         String    @map("user_id") @db.Uuid
+  categoryId     String    @map("category_id") @db.Uuid
+  locationId     String    @map("location_id") @db.Uuid
+  imageUrl       String?   @map("image_url")
+  expiryDate     DateTime? @map("expiry_date")
+  warrantyExpiry DateTime? @map("warranty_expiry")
+  notes          String?
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category       Category  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  location       Location  @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([categoryId])
+  @@index([locationId])
+  @@map("items")
+}

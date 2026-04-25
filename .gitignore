@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Environment Variables
+**/.env
+**/.env.*
+!**/.env.sample
+
+# Build & App Data
+dist/
+build/
+.expo/
+*.log
+
+# System Files
+.DS_Store
