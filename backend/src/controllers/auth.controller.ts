@@ -50,7 +50,7 @@ export const signup = async (req: Request, res: Response): Promise<Response> => 
     });
 
     const token = jwt.sign(
-      { id: user.id, email: user.email },
+      { id: user.id, email: user.email, role: user.role },
       getJwtSecret(),
       { expiresIn: "7d" }
     );
@@ -60,7 +60,8 @@ export const signup = async (req: Request, res: Response): Promise<Response> => 
       user: {
         id: user.id,
         email: user.email,
-        name: user.name
+        name: user.name,
+        role: user.role
       }
     });
   } catch (error) {
@@ -93,7 +94,7 @@ export const login = async (req: Request, res: Response): Promise<Response> => {
     }
 
     const token = jwt.sign(
-      { id: user.id, email: user.email },
+      { id: user.id, email: user.email, role: user.role },
       getJwtSecret(),
       { expiresIn: "7d" }
     );
@@ -103,7 +104,8 @@ export const login = async (req: Request, res: Response): Promise<Response> => {
       user: {
         id: user.id,
         email: user.email,
-        name: user.name
+        name: user.name,
+        role: user.role
       }
     });
   } catch (error) {

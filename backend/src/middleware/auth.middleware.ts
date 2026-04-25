@@ -15,6 +15,7 @@ declare global {
       user?: {
         id: string;
         email: string;
+        role: string;
       };
     }
   }
@@ -36,7 +37,7 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction):
       return;
     }
 
-    const decoded = jwt.verify(token, getJwtSecret()) as { id: string; email: string };
+    const decoded = jwt.verify(token, getJwtSecret()) as { id: string; email: string; role: string };
     
     req.user = decoded;
     
