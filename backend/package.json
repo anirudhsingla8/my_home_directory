@@ -2,7 +2,7 @@
   "name": "home-inventory-backend",
   "version": "1.0.0",
   "private": true,
-  "description": "Backend API for the Home Inventory Management System POC.",
+  "description": "Backend API for the Home Inventory Management System.",
   "engines": {
     "node": ">=20"
   },
@@ -23,28 +23,27 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
-    "bcrypt": "latest",
-    "cloudinary": "latest",
-    "cors": "latest",
-    "dotenv": "latest",
-    "express": "latest",
-    "firebase-admin": "latest",
-    "jsonwebtoken": "latest",
-    "multer": "latest",
-    "pg": "latest",
-    "zod": "latest"
+    "bcrypt": "^6.0.0",
+    "cloudinary": "^2.9.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "firebase-admin": "^13.8.0",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.1.1",
+    "pg": "^8.20.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/bcrypt": "latest",
-    "@types/cors": "latest",
-    "@types/express": "latest",
-    "@types/jsonwebtoken": "latest",
-    "@types/multer": "latest",
-    "@types/node": "latest",
-    "@types/pg": "latest",
+    "@types/bcrypt": "^6.0.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.1.0",
+    "@types/node": "^25.6.0",
+    "@types/pg": "^8.20.0",
     "prisma": "^7.8.0",
-    "tsx": "latest",
-    "typescript": "latest"
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0"
   }
 }
-

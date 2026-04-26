@@ -1,8 +1,9 @@
 import axios from "axios";
-import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 
-import { CategoryOption, Item, createItem, fetchCategoryTree, flattenCategoryTree } from "../api";
+import { CategoryOption, createItem, fetchCategoryTree, flattenCategoryTree, showToast } from "../api";
 import { useInventory } from "../context/InventoryContext";
+import { CategoryPicker } from "./CategoryPicker";
 
 type FormState = {
   name: string;
@@ -13,220 +14,306 @@ type FormState = {
   imageFile: File | null;
 };
 
-const initialState: FormState = {
-  name: "",
-  quantity: "1",
-  unit: "pcs",
-  categoryId: "",
-  expiryDate: "",
-  imageFile: null
+type FieldErrors = Partial<Record<"name" | "quantity" | "unit" | "categoryId" | "submit", string>>;
+
+const LS_LAST_UNIT = "inv:lastUnit";
+const LS_LAST_CATEGORY = "inv:lastCategoryId";
+
+const readLocal = (key: string): string => {
+  try {
+    return localStorage.getItem(key) ?? "";
+  } catch {
+    return "";
+  }
 };
 
-export function ItemForm() {
-  const { userId, locationId, triggerRefresh: onCreated } = useInventory();
-  const [formState, setFormState] = useState<FormState>(initialState);
+const writeLocal = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* ignore quota errors */
+  }
+};
+
+const buildInitialState = (): FormState => ({
+  name: "",
+  quantity: "1",
+  unit: readLocal(LS_LAST_UNIT) || "pcs",
+  categoryId: readLocal(LS_LAST_CATEGORY),
+  expiryDate: "",
+  imageFile: null
+});
+
+type ItemFormProps = {
+  onCreated?: () => void;
+};
+
+export function ItemForm({ onCreated }: ItemFormProps) {
+  const { selectedLocationId, triggerRefresh } = useInventory();
+  const [formState, setFormState] = useState<FormState>(buildInitialState);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [loadingCategories, setLoadingCategories] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!userId) {
-      setCategories([]);
-      return;
-    }
-
     const loadCategories = async () => {
       setLoadingCategories(true);
-      setError(null);
+      setErrors((prev) => ({ ...prev, submit: undefined }));
 
       try {
-        const tree = await fetchCategoryTree(userId);
+        const tree = await fetchCategoryTree();
         const flattened = flattenCategoryTree(tree);
-
         setCategories(flattened);
-        setFormState((current) => ({
-          ...current,
-          categoryId: flattened[0]?.id ?? ""
-        }));
+
+        setFormState((current) => {
+          const stillValid = flattened.some((c) => c.isLeaf && c.id === current.categoryId);
+          if (stillValid) return current;
+          const firstLeaf = flattened.find((c) => c.isLeaf);
+          return { ...current, categoryId: firstLeaf?.id ?? "" };
+        });
       } catch (err) {
-        if (axios.isAxiosError(err)) {
-          setError(err.response?.data?.message ?? "Could not load categories.");
-        } else {
-          setError("Could not load categories.");
-        }
+        const message = axios.isAxiosError(err)
+          ? err.response?.data?.message ?? "Could not load categories."
+          : "Could not load categories.";
+        setErrors((prev) => ({ ...prev, submit: message }));
       } finally {
         setLoadingCategories(false);
       }
     };
 
     void loadCategories();
-  }, [userId]);
+  }, []);
+
+  useEffect(() => {
+    if (!formState.imageFile) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(formState.imageFile);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [formState.imageFile]);
 
   const updateField = (field: keyof Omit<FormState, "imageFile">) => {
     return (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-      setFormState((current) => ({
-        ...current,
-        [field]: event.target.value
-      }));
+      const value = event.target.value;
+      setFormState((current) => ({ ...current, [field]: value }));
+      if (errors[field as keyof FieldErrors]) {
+        setErrors((prev) => ({ ...prev, [field]: undefined }));
+      }
     };
   };
 
   const updateImage = (event: ChangeEvent<HTMLInputElement>) => {
-    setFormState((current) => ({
-      ...current,
-      imageFile: event.target.files?.[0] ?? null
-    }));
+    setFormState((current) => ({ ...current, imageFile: event.target.files?.[0] ?? null }));
+  };
+
+  const handleCategoryChange = (id: string) => {
+    setFormState((prev) => ({ ...prev, categoryId: id }));
+    if (errors.categoryId) {
+      setErrors((prev) => ({ ...prev, categoryId: undefined }));
+    }
+  };
+
+  const validate = (): FieldErrors => {
+    const next: FieldErrors = {};
+    if (!formState.name.trim()) next.name = "Name is required.";
+    const qty = Number(formState.quantity);
+    if (!formState.quantity || Number.isNaN(qty) || qty < 0) {
+      next.quantity = "Enter a non-negative number.";
+    }
+    if (!formState.unit.trim()) next.unit = "Unit is required.";
+    if (!formState.categoryId) next.categoryId = "Select a subcategory.";
+    if (!selectedLocationId) next.submit = "Please select a location in the top bar before adding items.";
+    return next;
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!userId || !locationId) {
-      setError("Both user ID and location ID are required before creating items.");
+    const validationErrors = validate();
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
       return;
     }
 
     setSubmitting(true);
-    setError(null);
-    setSuccess(null);
+    setErrors({});
 
     try {
       const createdItem = await createItem({
-        name: formState.name,
+        name: formState.name.trim(),
         quantity: Number(formState.quantity),
-        unit: formState.unit,
+        unit: formState.unit.trim(),
         categoryId: formState.categoryId,
-        userId,
-        locationId,
+        locationId: selectedLocationId,
         expiryDate: formState.expiryDate || undefined,
         imageFile: formState.imageFile
       });
 
+      writeLocal(LS_LAST_UNIT, formState.unit.trim());
+      writeLocal(LS_LAST_CATEGORY, formState.categoryId);
+
       setFormState({
-        ...initialState,
-        categoryId: categories[0]?.id ?? ""
+        name: "",
+        quantity: "1",
+        unit: formState.unit,
+        categoryId: formState.categoryId,
+        expiryDate: "",
+        imageFile: null
       });
-      setSuccess(`${createdItem.name} was added to inventory.`);
+      showToast(`"${createdItem.name}" added to inventory`, "success");
+      triggerRefresh();
       onCreated?.();
     } catch (err) {
-      if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.message ?? "Could not create the item.");
-      } else {
-        setError("Could not create the item.");
-      }
+      const message = axios.isAxiosError(err)
+        ? err.response?.data?.message ?? "Could not create the item."
+        : "Could not create the item.";
+      setErrors({ submit: message });
     } finally {
       setSubmitting(false);
     }
   };
 
+  const leafCount = useMemo(() => categories.filter((c) => c.isLeaf).length, [categories]);
+
+  const fieldClass = (field: keyof FieldErrors) =>
+    `w-full rounded-lg border bg-slate-50 px-3 py-2.5 text-sm text-slate-900 placeholder-slate-400 transition focus:bg-white focus:outline-none focus:ring-1 ${
+      errors[field]
+        ? "border-rose-300 focus:border-rose-400 focus:ring-rose-300"
+        : "border-slate-200 focus:border-amber-300 focus:ring-amber-300"
+    }`;
+
+  const FieldError = ({ field }: { field: keyof FieldErrors }) =>
+    errors[field] ? (
+      <p className="text-xs text-rose-600">{errors[field]}</p>
+    ) : null;
+
   return (
-    <section className="rounded-[28px] border border-white/60 bg-white/85 p-6 shadow-[0_20px_50px_-30px_rgba(15,23,42,0.75)] backdrop-blur">
-      <div className="mb-6">
-        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">New Item</p>
-        <h2 className="mt-1 text-xl font-semibold text-slate-950">Add Inventory Item</h2>
+    <section className="rounded-2xl border border-slate-200 bg-white p-5">
+      <div className="mb-4 flex items-baseline justify-between gap-3">
+        <h2 className="text-sm font-semibold text-slate-900">New Item</h2>
+        <span className="text-xs text-slate-400">
+          <span className="text-rose-500">*</span> required
+        </span>
       </div>
 
-      <form className="space-y-4" onSubmit={handleSubmit}>
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="space-y-2">
-            <span className="text-sm font-medium text-slate-700">Name</span>
+      <form className="space-y-5" onSubmit={handleSubmit} noValidate>
+        {/* Required fields */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <label className="space-y-1.5 sm:col-span-2 lg:col-span-1">
+            <span className="text-xs font-medium text-slate-500">
+              Name <span className="text-rose-500">*</span>
+            </span>
             <input
               type="text"
               value={formState.name}
               onChange={updateField("name")}
-              placeholder="Potato"
-              required
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+              placeholder="e.g. Potato"
+              aria-invalid={!!errors.name}
+              className={fieldClass("name")}
             />
+            <FieldError field="name" />
           </label>
 
-          <label className="space-y-2">
-            <span className="text-sm font-medium text-slate-700">Quantity</span>
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium text-slate-500">
+              Quantity <span className="text-rose-500">*</span>
+            </span>
             <input
               type="number"
               min="0"
               step="0.01"
               value={formState.quantity}
               onChange={updateField("quantity")}
-              required
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+              aria-invalid={!!errors.quantity}
+              className={fieldClass("quantity")}
             />
+            <FieldError field="quantity" />
           </label>
-        </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="space-y-2">
-            <span className="text-sm font-medium text-slate-700">Unit</span>
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium text-slate-500">
+              Unit <span className="text-rose-500">*</span>
+            </span>
             <input
               type="text"
               value={formState.unit}
               onChange={updateField("unit")}
-              placeholder="kg"
-              required
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+              placeholder="kg, pcs, L..."
+              aria-invalid={!!errors.unit}
+              className={fieldClass("unit")}
             />
+            <FieldError field="unit" />
           </label>
 
-          <label className="space-y-2">
-            <span className="text-sm font-medium text-slate-700">Category</span>
-            <select
-              value={formState.categoryId}
-              onChange={updateField("categoryId")}
-              required
-              disabled={loadingCategories || categories.length === 0}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white disabled:cursor-not-allowed disabled:bg-slate-100"
-            >
-              {categories.length === 0 ? (
-                <option value="">
-                  {loadingCategories ? "Loading categories..." : "No categories available"}
-                </option>
-              ) : null}
-
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {`${"— ".repeat(category.depth)}${category.name}`}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="space-y-1.5 sm:col-span-2 lg:col-span-3">
+            <span className="text-xs font-medium text-slate-500">
+              Subcategory <span className="text-rose-500">*</span>
+            </span>
+            <CategoryPicker
+              categories={categories}
+              selectedId={formState.categoryId}
+              onChange={handleCategoryChange}
+              loading={loadingCategories}
+              disabled={leafCount === 0}
+            />
+            <FieldError field="categoryId" />
+          </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="space-y-2">
-            <span className="text-sm font-medium text-slate-700">Expiry Date</span>
-            <input
-              type="date"
-              value={formState.expiryDate}
-              onChange={updateField("expiryDate")}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
-            />
-          </label>
+        {/* Optional fields */}
+        <div className="border-t border-slate-100 pt-4">
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            Optional
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="space-y-1.5">
+              <span className="text-xs font-medium text-slate-500">Expiry date</span>
+              <input
+                type="date"
+                value={formState.expiryDate}
+                onChange={updateField("expiryDate")}
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 transition focus:border-amber-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-300"
+              />
+            </label>
 
-          <label className="space-y-2">
-            <span className="text-sm font-medium text-slate-700">Image</span>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={updateImage}
-              className="block w-full rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-4 file:rounded-full file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:border-slate-500"
-            />
-          </label>
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium text-slate-500">Image</span>
+              <div className="flex items-center gap-3">
+                {previewUrl && (
+                  <img
+                    src={previewUrl}
+                    alt="Preview"
+                    className="h-12 w-12 shrink-0 rounded-lg border border-slate-200 object-cover"
+                  />
+                )}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  onChange={updateImage}
+                  className="block w-full rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-500 file:mr-3 file:rounded-md file:border-0 file:bg-slate-900 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-white hover:border-slate-400"
+                />
+              </div>
+            </div>
+          </div>
         </div>
 
-        {error ? <p className="rounded-2xl bg-rose-100 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
-        {success ? (
-          <p className="rounded-2xl bg-emerald-100 px-4 py-3 text-sm text-emerald-700">{success}</p>
-        ) : null}
+        {errors.submit && (
+          <p className="rounded-lg bg-rose-50 px-3 py-2.5 text-sm text-rose-600">{errors.submit}</p>
+        )}
 
-        <button
-          type="submit"
-          disabled={submitting || !userId || !locationId || categories.length === 0}
-          className="inline-flex items-center justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-        >
-          {submitting ? "Saving Item..." : "Create Item"}
-        </button>
+        <div className="flex items-center justify-end gap-3 pt-1">
+          <button
+            type="submit"
+            disabled={submitting || !selectedLocationId || leafCount === 0}
+            className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-40"
+          >
+            {submitting ? "Saving..." : !selectedLocationId ? "Select a location first" : "Add Item"}
+          </button>
+        </div>
       </form>
     </section>
   );

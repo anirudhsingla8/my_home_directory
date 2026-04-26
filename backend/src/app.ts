@@ -5,6 +5,7 @@ import authRouter from "./routes/auth.routes";
 import { authMiddleware } from "./middleware/auth.middleware";
 import categoryRouter from "./routes/category.routes";
 import itemRouter from "./routes/item.routes";
+import locationRouter from "./routes/location.routes";
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.use("/api/auth", authRouter);
 
 app.use("/api/categories", authMiddleware, categoryRouter);
 app.use("/api/items", authMiddleware, itemRouter);
+app.use("/api/locations", authMiddleware, locationRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ message: "Route not found." });

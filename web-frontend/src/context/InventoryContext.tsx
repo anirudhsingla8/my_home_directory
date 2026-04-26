@@ -1,51 +1,84 @@
-import React, { createContext, useContext, useState, ReactNode, useEffect } from "react";
-import { CategoryNode } from "../api";
+import { createContext, useCallback, useContext, useState, useEffect, ReactNode } from "react";
+import { CategoryNode, Item, Location, fetchAlertItems, fetchLocations } from "../api";
 import { useAuth } from "./AuthContext";
 
 interface InventoryContextType {
-  userId: string;
-  setUserId: (id: string) => void;
-  locationId: string;
-  setLocationId: (id: string) => void;
+  locations: Location[];
+  selectedLocationId: string;
+  setSelectedLocationId: (id: string) => void;
+  reloadLocations: () => void;
   selectedCategory: CategoryNode | null;
   setSelectedCategory: (category: CategoryNode | null) => void;
   refreshKey: number;
   triggerRefresh: () => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
+  alerts: Item[];
+  reloadAlerts: () => void;
+  removeAlertOptimistic: (itemId: string) => void;
 }
 
 const InventoryContext = createContext<InventoryContextType | undefined>(undefined);
 
 export const InventoryProvider = ({ children }: { children: ReactNode }) => {
-  const { user } = useAuth();
-  const [userId, setUserId] = useState(user?.id || "");
-  const [locationId, setLocationId] = useState("");
+  const { isAuthenticated } = useAuth();
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [selectedLocationId, setSelectedLocationId] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<CategoryNode | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
+  const [alerts, setAlerts] = useState<Item[]>([]);
+
+  const loadLocations = () => {
+    if (!isAuthenticated) return;
+    fetchLocations()
+      .then((locs) => {
+        setLocations(locs);
+        if (!selectedLocationId && locs.length > 0) {
+          setSelectedLocationId(locs[0].id);
+        }
+      })
+      .catch(console.error);
+  };
+
+  const reloadAlerts = useCallback(() => {
+    if (!isAuthenticated) return;
+    fetchAlertItems()
+      .then(setAlerts)
+      .catch(console.error);
+  }, [isAuthenticated]);
+
+  const removeAlertOptimistic = useCallback((itemId: string) => {
+    setAlerts((prev) => prev.filter((item) => item.id !== itemId));
+  }, []);
 
   useEffect(() => {
-    if (user?.id) {
-      setUserId(user.id);
-    }
-  }, [user]);
+    loadLocations();
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    reloadAlerts();
+  }, [isAuthenticated, refreshKey, reloadAlerts]);
 
   const triggerRefresh = () => setRefreshKey((prev) => prev + 1);
+  const reloadLocations = loadLocations;
 
   return (
     <InventoryContext.Provider
       value={{
-        userId,
-        setUserId,
-        locationId,
-        setLocationId,
+        locations,
+        selectedLocationId,
+        setSelectedLocationId,
+        reloadLocations,
         selectedCategory,
         setSelectedCategory,
         refreshKey,
         triggerRefresh,
         searchQuery,
-        setSearchQuery
+        setSearchQuery,
+        alerts,
+        reloadAlerts,
+        removeAlertOptimistic
       }}
     >
       {children}

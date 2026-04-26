@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
 import { prisma } from "../lib/prisma";
+import { getStringValue } from "../utils/helpers";
 
 const getJwtSecret = (): string => {
   const secret = process.env.JWT_SECRET;
@@ -10,15 +11,6 @@ const getJwtSecret = (): string => {
     throw new Error("JWT_SECRET environment variable is not configured.");
   }
   return secret;
-};
-
-const getStringValue = (...values: unknown[]): string | undefined => {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim() !== "") {
-      return value.trim();
-    }
-  }
-  return undefined;
 };
 
 export const signup = async (req: Request, res: Response): Promise<Response> => {

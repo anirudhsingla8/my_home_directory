@@ -1,15 +1,79 @@
 @import "tailwindcss";
 
+/* ─── Theme tokens ─────────────────────────────────────────────────── */
+
+:root,
+[data-theme="light"] {
+  --theme-bg-page: #f8fafc;        /* slate-50  */
+  --theme-bg-card: #ffffff;        /* white     */
+  --theme-bg-elevated: #ffffff;    /* dropdowns / modals */
+  --theme-bg-input: #f8fafc;       /* slate-50  */
+  --theme-bg-chip: #f1f5f9;        /* slate-100 */
+  --theme-bg-hover: #f1f5f9;       /* slate-100 */
+  --theme-bg-strong: #0f172a;      /* slate-900, primary CTA  */
+  --theme-text-primary: #0f172a;
+  --theme-text-secondary: #334155;
+  --theme-text-muted: #64748b;
+  --theme-text-subtle: #94a3b8;
+  --theme-text-faint: #cbd5e1;
+  --theme-border-default: #e2e8f0; /* slate-200 */
+  --theme-border-subtle: #f1f5f9;  /* slate-100 */
+  --theme-border-strong: #cbd5e1;  /* slate-300 */
+  --theme-topbar-bg: rgba(255, 255, 255, 0.8);
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --theme-bg-page: #0b1220;
+  --theme-bg-card: #111827;
+  --theme-bg-elevated: #1e293b;
+  --theme-bg-input: #0f172a;
+  --theme-bg-chip: #1e293b;
+  --theme-bg-hover: #1e293b;
+  --theme-bg-strong: #f1f5f9;
+  --theme-text-primary: #f1f5f9;
+  --theme-text-secondary: #cbd5e1;
+  --theme-text-muted: #94a3b8;
+  --theme-text-subtle: #64748b;
+  --theme-text-faint: #475569;
+  --theme-border-default: #1f2937;
+  --theme-border-subtle: #1e293b;
+  --theme-border-strong: #334155;
+  --theme-topbar-bg: rgba(11, 18, 32, 0.85);
+  color-scheme: dark;
+}
+
+[data-theme="grey"] {
+  --theme-bg-page: #1f1f22;
+  --theme-bg-card: #28282c;
+  --theme-bg-elevated: #303034;
+  --theme-bg-input: #28282c;
+  --theme-bg-chip: #3a3a3f;
+  --theme-bg-hover: #3a3a3f;
+  --theme-bg-strong: #f4f4f5;
+  --theme-text-primary: #f4f4f5;
+  --theme-text-secondary: #d4d4d8;
+  --theme-text-muted: #a1a1aa;
+  --theme-text-subtle: #71717a;
+  --theme-text-faint: #52525b;
+  --theme-border-default: #3a3a3f;
+  --theme-border-subtle: #303034;
+  --theme-border-strong: #52525b;
+  --theme-topbar-bg: rgba(31, 31, 34, 0.85);
+  color-scheme: dark;
+}
+
 :root {
-  color: #0f172a;
-  background: #f8fafc;
-  font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+  color: var(--theme-text-primary);
+  background: var(--theme-bg-page);
+  font-family: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   line-height: 1.5;
   font-weight: 400;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 * {
@@ -23,14 +87,283 @@ html {
 body {
   margin: 0;
   min-width: 320px;
+  background: var(--theme-bg-page);
+  color: var(--theme-text-primary);
 }
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
+  color: inherit;
 }
 
 #root {
   min-height: 100vh;
+}
+
+/* Focus-visible for keyboard accessibility */
+:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* Smooth collapsible animation */
+.collapsible-enter {
+  animation: slideDown 0.25s ease-out forwards;
+}
+
+.collapsible-exit {
+  animation: slideUp 0.2s ease-in forwards;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; max-height: 0; transform: translateY(-8px); }
+  to { opacity: 1; max-height: 800px; transform: translateY(0); }
+}
+
+@keyframes slideUp {
+  from { opacity: 1; max-height: 800px; transform: translateY(0); }
+  to { opacity: 0; max-height: 0; transform: translateY(-8px); }
+}
+
+/* Custom scrollbar for sidebar */
+.sidebar-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: var(--theme-border-strong);
+  border-radius: 4px;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--theme-text-subtle);
+}
+
+/* Toast animation override */
+#app-toast {
+  max-width: 360px;
+}
+
+/* ─── Tailwind utility theme overrides ────────────────────────────────
+ *
+ * Below: re-color specific Tailwind utilities under non-light themes so
+ * existing components inherit the new palette without per-component edits.
+ * Light theme uses the original Tailwind values (no override needed).
+ */
+
+[data-theme="dark"] .bg-slate-50,
+[data-theme="grey"] .bg-slate-50 {
+  background-color: var(--theme-bg-input);
+}
+[data-theme="dark"] .bg-white,
+[data-theme="grey"] .bg-white {
+  background-color: var(--theme-bg-card);
+}
+[data-theme="dark"] .bg-slate-100,
+[data-theme="grey"] .bg-slate-100 {
+  background-color: var(--theme-bg-chip);
+}
+[data-theme="dark"] .bg-slate-200,
+[data-theme="grey"] .bg-slate-200 {
+  background-color: var(--theme-bg-hover);
+}
+[data-theme="dark"] .bg-slate-900,
+[data-theme="grey"] .bg-slate-900 {
+  background-color: var(--theme-bg-strong);
+  color: #0f172a;
+}
+[data-theme="dark"] .bg-slate-800,
+[data-theme="grey"] .bg-slate-800 {
+  background-color: var(--theme-border-strong);
+}
+
+/* TopBar uses bg-white/80 backdrop blur — replicate per-theme */
+[data-theme="dark"] header.bg-white\/80,
+[data-theme="grey"] header.bg-white\/80 {
+  background-color: var(--theme-topbar-bg) !important;
+}
+
+/* Text colors — slate scale flips in dark/grey */
+[data-theme="dark"] .text-slate-900,
+[data-theme="grey"] .text-slate-900 { color: var(--theme-text-primary); }
+[data-theme="dark"] .text-slate-800,
+[data-theme="grey"] .text-slate-800 { color: var(--theme-text-primary); }
+[data-theme="dark"] .text-slate-700,
+[data-theme="grey"] .text-slate-700 { color: var(--theme-text-secondary); }
+[data-theme="dark"] .text-slate-600,
+[data-theme="grey"] .text-slate-600 { color: var(--theme-text-secondary); }
+[data-theme="dark"] .text-slate-500,
+[data-theme="grey"] .text-slate-500 { color: var(--theme-text-muted); }
+[data-theme="dark"] .text-slate-400,
+[data-theme="grey"] .text-slate-400 { color: var(--theme-text-subtle); }
+[data-theme="dark"] .text-slate-300,
+[data-theme="grey"] .text-slate-300 { color: var(--theme-text-faint); }
+
+/* Borders */
+[data-theme="dark"] .border-slate-100,
+[data-theme="grey"] .border-slate-100 { border-color: var(--theme-border-subtle); }
+[data-theme="dark"] .border-slate-200,
+[data-theme="grey"] .border-slate-200 { border-color: var(--theme-border-default); }
+[data-theme="dark"] .border-slate-300,
+[data-theme="grey"] .border-slate-300 { border-color: var(--theme-border-strong); }
+
+/* Hover/focus on inputs and selectors should stay legible */
+[data-theme="dark"] .focus\:bg-white:focus,
+[data-theme="grey"] .focus\:bg-white:focus,
+[data-theme="dark"] .hover\:bg-slate-50:hover,
+[data-theme="grey"] .hover\:bg-slate-50:hover {
+  background-color: var(--theme-bg-elevated);
+}
+[data-theme="dark"] .hover\:bg-slate-100:hover,
+[data-theme="grey"] .hover\:bg-slate-100:hover,
+[data-theme="dark"] .hover\:bg-slate-200:hover,
+[data-theme="grey"] .hover\:bg-slate-200:hover {
+  background-color: var(--theme-bg-hover);
+}
+[data-theme="dark"] .hover\:bg-slate-800:hover,
+[data-theme="grey"] .hover\:bg-slate-800:hover { background-color: var(--theme-border-strong); color: #0f172a; }
+[data-theme="dark"] .hover\:bg-slate-900:hover,
+[data-theme="grey"] .hover\:bg-slate-900:hover { background-color: var(--theme-text-primary); color: #0f172a; }
+[data-theme="dark"] .hover\:bg-slate-300:hover,
+[data-theme="grey"] .hover\:bg-slate-300:hover { background-color: var(--theme-text-faint); color: #0f172a; }
+
+/* Hover text colors */
+[data-theme="dark"] .hover\:text-slate-900:hover,
+[data-theme="grey"] .hover\:text-slate-900:hover { color: var(--theme-text-primary); }
+[data-theme="dark"] .hover\:text-slate-700:hover,
+[data-theme="grey"] .hover\:text-slate-700:hover { color: var(--theme-text-secondary); }
+[data-theme="dark"] .hover\:text-slate-600:hover,
+[data-theme="grey"] .hover\:text-slate-600:hover { color: var(--theme-text-secondary); }
+
+/* Hover/focus border colors */
+[data-theme="dark"] .hover\:border-slate-300:hover,
+[data-theme="grey"] .hover\:border-slate-300:hover { border-color: var(--theme-border-strong); }
+[data-theme="dark"] .hover\:border-slate-400:hover,
+[data-theme="grey"] .hover\:border-slate-400:hover { border-color: var(--theme-text-subtle); }
+[data-theme="dark"] .focus\:border-amber-300:focus,
+[data-theme="grey"] .focus\:border-amber-300:focus { border-color: #fbbf24; }
+
+/* Inputs in dark/grey: placeholder + border tweaks */
+[data-theme="dark"] input,
+[data-theme="grey"] input,
+[data-theme="dark"] select,
+[data-theme="grey"] select,
+[data-theme="dark"] textarea,
+[data-theme="grey"] textarea {
+  color-scheme: dark;
+}
+[data-theme="dark"] .placeholder-slate-400::placeholder,
+[data-theme="grey"] .placeholder-slate-400::placeholder { color: var(--theme-text-subtle); }
+
+/* Empty-state dashed border placeholder */
+[data-theme="dark"] .border-dashed.border-slate-200,
+[data-theme="grey"] .border-dashed.border-slate-200,
+[data-theme="dark"] .border-dashed.border-slate-300,
+[data-theme="grey"] .border-dashed.border-slate-300 { border-color: var(--theme-border-strong); }
+
+/* Subtle gradient placeholders inside item card images */
+[data-theme="dark"] .from-slate-50,
+[data-theme="grey"] .from-slate-50 { --tw-gradient-from: var(--theme-bg-input); }
+[data-theme="dark"] .to-slate-100,
+[data-theme="grey"] .to-slate-100 { --tw-gradient-to: var(--theme-bg-chip); }
+
+/* Translucent slate-200/60 etc — used for shadow tints */
+[data-theme="dark"] .shadow-slate-200\/60,
+[data-theme="grey"] .shadow-slate-200\/60 { --tw-shadow-color: rgba(0, 0, 0, 0.4); }
+[data-theme="dark"] .shadow-slate-200\/70,
+[data-theme="grey"] .shadow-slate-200\/70 { --tw-shadow-color: rgba(0, 0, 0, 0.5); }
+[data-theme="dark"] .shadow-slate-900\/10,
+[data-theme="grey"] .shadow-slate-900\/10 { --tw-shadow-color: rgba(0, 0, 0, 0.5); }
+
+/* ─── Tinted accent surfaces (amber / emerald / rose) ─────────────────
+ *
+ * These light-tint backgrounds (bg-amber-50, bg-emerald-50, bg-rose-50, etc.)
+ * are not overridden by default, so in dark/grey themes they stay LIGHT.
+ * Combined with text-slate-* overrides (which flip to LIGHT in dark/grey),
+ * the result is "light text on light yellow" — invisible.
+ *
+ * Fix: in dark/grey themes, swap these tints for translucent dark variants
+ * AND flip the matching dark accent text colors (text-amber-900, etc.) to
+ * lighter shades so they read on the new tinted-dark surface.
+ */
+
+/* Amber surfaces */
+[data-theme="dark"] .bg-amber-50,
+[data-theme="grey"] .bg-amber-50 { background-color: rgba(251, 191, 36, 0.10); }
+[data-theme="dark"] .bg-amber-100,
+[data-theme="grey"] .bg-amber-100 { background-color: rgba(251, 191, 36, 0.18); }
+[data-theme="dark"] .border-amber-200,
+[data-theme="grey"] .border-amber-200 { border-color: rgba(251, 191, 36, 0.32); }
+[data-theme="dark"] .border-amber-300,
+[data-theme="grey"] .border-amber-300 { border-color: rgba(251, 191, 36, 0.45); }
+[data-theme="dark"] .ring-amber-300,
+[data-theme="grey"] .ring-amber-300 { --tw-ring-color: rgba(251, 191, 36, 0.55); }
+[data-theme="dark"] .hover\:bg-amber-100:hover,
+[data-theme="grey"] .hover\:bg-amber-100:hover { background-color: rgba(251, 191, 36, 0.22); }
+
+/* Amber text (was dark amber, now needs to be light amber on dark tints) */
+[data-theme="dark"] .text-amber-900,
+[data-theme="grey"] .text-amber-900 { color: #fde68a; }
+[data-theme="dark"] .text-amber-800,
+[data-theme="grey"] .text-amber-800 { color: #fcd34d; }
+[data-theme="dark"] .text-amber-700,
+[data-theme="grey"] .text-amber-700 { color: #fcd34d; }
+[data-theme="dark"] .text-amber-600,
+[data-theme="grey"] .text-amber-600 { color: #fbbf24; }
+[data-theme="dark"] .text-amber-500,
+[data-theme="grey"] .text-amber-500 { color: #fbbf24; }
+[data-theme="dark"] .hover\:text-amber-700:hover,
+[data-theme="grey"] .hover\:text-amber-700:hover { color: #fde68a; }
+
+/* Emerald surfaces */
+[data-theme="dark"] .bg-emerald-50,
+[data-theme="grey"] .bg-emerald-50 { background-color: rgba(52, 211, 153, 0.12); }
+[data-theme="dark"] .text-emerald-700,
+[data-theme="grey"] .text-emerald-700 { color: #6ee7b7; }
+[data-theme="dark"] .text-emerald-800,
+[data-theme="grey"] .text-emerald-800 { color: #86efac; }
+
+/* Rose surfaces */
+[data-theme="dark"] .bg-rose-50,
+[data-theme="grey"] .bg-rose-50 { background-color: rgba(244, 63, 94, 0.14); }
+[data-theme="dark"] .bg-rose-100,
+[data-theme="grey"] .bg-rose-100 { background-color: rgba(244, 63, 94, 0.20); }
+[data-theme="dark"] .border-rose-200,
+[data-theme="grey"] .border-rose-200 { border-color: rgba(244, 63, 94, 0.30); }
+[data-theme="dark"] .border-rose-300,
+[data-theme="grey"] .border-rose-300 { border-color: rgba(244, 63, 94, 0.40); }
+[data-theme="dark"] .ring-rose-300,
+[data-theme="grey"] .ring-rose-300 { --tw-ring-color: rgba(244, 63, 94, 0.55); }
+[data-theme="dark"] .text-rose-700,
+[data-theme="grey"] .text-rose-700 { color: #fda4af; }
+[data-theme="dark"] .text-rose-600,
+[data-theme="grey"] .text-rose-600 { color: #fb7185; }
+[data-theme="dark"] .text-rose-500,
+[data-theme="grey"] .text-rose-500 { color: #fb7185; }
+[data-theme="dark"] .hover\:bg-rose-50:hover,
+[data-theme="grey"] .hover\:bg-rose-50:hover { background-color: rgba(244, 63, 94, 0.18); }
+[data-theme="dark"] .hover\:text-rose-600:hover,
+[data-theme="grey"] .hover\:text-rose-600:hover { color: #fb7185; }
+
+/* Native <select> options (browsers render these via OS chrome) */
+[data-theme="dark"] select option,
+[data-theme="grey"] select option {
+  background-color: var(--theme-bg-card);
+  color: var(--theme-text-primary);
+}
+
+/* File input button keeps a contrast color against the dark form background */
+[data-theme="dark"] .file\:bg-slate-900::file-selector-button,
+[data-theme="grey"] .file\:bg-slate-900::file-selector-button {
+  background-color: #fbbf24;
+  color: #0f172a;
+}
+[data-theme="dark"] .file\:text-white::file-selector-button,
+[data-theme="grey"] .file\:text-white::file-selector-button {
+  color: #0f172a;
 }

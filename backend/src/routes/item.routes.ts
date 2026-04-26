@@ -1,5 +1,6 @@
 import { Router } from "express";
-import multer from "multer";
+import multer, { FileFilterCallback } from "multer";
+import { Request } from "express";
 
 import {
   createItem,
@@ -12,11 +13,25 @@ import {
 import { validate } from "../middleware/validate.middleware";
 import { createItemSchema } from "../validators/schemas";
 
+const ALLOWED_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif"
+]);
+
+const imageFilter = (_req: Request, file: Express.Multer.File, cb: FileFilterCallback): void => {
+  if (ALLOWED_MIME_TYPES.has(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error("Only image files (JPEG, PNG, WebP, GIF) are allowed."));
+  }
+};
+
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 10 * 1024 * 1024
-  }
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: imageFilter
 });
 
 const router = Router();

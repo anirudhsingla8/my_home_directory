@@ -12,6 +12,17 @@ type TreeBranchProps = {
   toggleNode: (nodeId: string) => void;
 };
 
+const ChevronIcon = ({ open }: { open: boolean }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    className={`h-3.5 w-3.5 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
+    viewBox="0 0 20 20"
+    fill="currentColor"
+  >
+    <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+  </svg>
+);
+
 const TreeBranch = ({
   expandedIds,
   nodes,
@@ -20,7 +31,7 @@ const TreeBranch = ({
   toggleNode
 }: TreeBranchProps) => {
   return (
-    <ul className="space-y-2" role="tree">
+    <ul className="space-y-0.5" role="tree">
       {nodes.map((node) => {
         const isExpanded = expandedIds.has(node.id);
         const isSelected = selectedCategoryId === node.id;
@@ -28,40 +39,42 @@ const TreeBranch = ({
 
         return (
           <li key={node.id} role="treeitem" aria-expanded={hasChildren ? isExpanded : undefined}>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center">
               {hasChildren ? (
                 <button
                   type="button"
-                  onClick={() => toggleNode(node.id)}
-                  className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 transition hover:border-slate-500 hover:text-slate-950"
+                  onClick={(e) => { e.stopPropagation(); toggleNode(node.id); }}
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
                   aria-label={isExpanded ? `Collapse ${node.name}` : `Expand ${node.name}`}
                 >
-                  {isExpanded ? "−" : "+"}
+                  <ChevronIcon open={isExpanded} />
                 </button>
               ) : (
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-dashed border-slate-300 text-xs text-slate-400">
-                  •
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+                  <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
                 </span>
               )}
 
               <button
                 type="button"
                 onClick={() => onNodeClick(node)}
-                className={`flex-1 rounded-2xl px-3 py-2 text-left text-sm transition ${
+                className={`flex-1 rounded-lg px-2.5 py-1.5 text-left text-[13px] transition ${
                   isSelected
-                    ? "bg-amber-300/70 text-slate-950 shadow-sm"
-                    : "bg-white/80 text-slate-700 hover:bg-white hover:text-slate-950"
+                    ? "bg-amber-100 font-semibold text-amber-900"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`}
               >
-                <span className="font-medium">{node.name}</span>
-                {hasChildren ? (
-                  <span className="ml-2 text-xs text-slate-500">{node.children.length} nested</span>
-                ) : null}
+                {node.name}
+                {hasChildren && (
+                  <span className={`ml-1.5 text-[11px] ${isSelected ? "text-amber-600" : "text-slate-400"}`}>
+                    {node.children.length}
+                  </span>
+                )}
               </button>
             </div>
 
-            {hasChildren && isExpanded ? (
-              <div className="ml-5 border-l border-dashed border-slate-300 pl-4 pt-2">
+            {hasChildren && isExpanded && (
+              <div className="ml-3 border-l border-slate-200 pl-2 mt-0.5">
                 <TreeBranch
                   expandedIds={expandedIds}
                   nodes={node.children}
@@ -70,7 +83,7 @@ const TreeBranch = ({
                   toggleNode={toggleNode}
                 />
               </div>
-            ) : null}
+            )}
           </li>
         );
       })}
@@ -79,7 +92,7 @@ const TreeBranch = ({
 };
 
 export function CategoryTree() {
-  const { userId, selectedCategory, setSelectedCategory } = useInventory();
+  const { selectedCategory, setSelectedCategory } = useInventory();
   const selectedCategoryId = selectedCategory?.id;
   const [categories, setCategories] = useState<CategoryNode[]>([]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -87,21 +100,16 @@ export function CategoryTree() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!userId) {
-      setCategories([]);
-      setExpandedIds(new Set());
-      setError(null);
-      return;
-    }
-
     const loadTree = async () => {
       setLoading(true);
       setError(null);
 
       try {
-        const tree = await fetchCategoryTree(userId);
+        const tree = await fetchCategoryTree();
         setCategories(tree);
-        setExpandedIds(new Set(tree.map((node) => node.id)));
+        // Start collapsed — keeps the sidebar compact, especially on mobile.
+        // Users expand on demand via the chevron.
+        setExpandedIds(new Set());
       } catch (err) {
         if (axios.isAxiosError(err)) {
           setError(err.response?.data?.message ?? "Could not load categories.");
@@ -114,18 +122,13 @@ export function CategoryTree() {
     };
 
     void loadTree();
-  }, [userId]);
+  }, []);
 
   const toggleNode = (nodeId: string) => {
     setExpandedIds((current) => {
       const next = new Set(current);
-
-      if (next.has(nodeId)) {
-        next.delete(nodeId);
-      } else {
-        next.add(nodeId);
-      }
-
+      if (next.has(nodeId)) next.delete(nodeId);
+      else next.add(nodeId);
       return next;
     });
   };
@@ -134,42 +137,31 @@ export function CategoryTree() {
     if (node.children.length > 0) {
       toggleNode(node.id);
     }
-
     setSelectedCategory(node.id === selectedCategoryId ? null : node);
   };
 
   return (
-    <section className="rounded-[28px] border border-white/60 bg-slate-50/80 p-5 shadow-[0_20px_50px_-30px_rgba(15,23,42,0.8)] backdrop-blur">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
-            Categories
-          </p>
-          <h2 className="mt-1 text-xl font-semibold text-slate-950">Collapsible Category Tree</h2>
+    <section className="rounded-2xl border border-slate-200 bg-white p-4">
+      <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Categories</h2>
+
+      {loading && (
+        <div className="flex items-center gap-2 py-4 text-sm text-slate-400">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-200 border-t-amber-500" />
+          Loading...
         </div>
-      </div>
+      )}
 
-      {!userId ? (
-        <p className="rounded-2xl bg-white px-4 py-3 text-sm text-slate-500">
-          Enter a user ID to load that inventory tree.
+      {error && (
+        <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600">{error}</p>
+      )}
+
+      {!loading && !error && categories.length === 0 && (
+        <p className="py-4 text-center text-sm text-slate-400">
+          No categories yet
         </p>
-      ) : null}
+      )}
 
-      {loading ? (
-        <p className="rounded-2xl bg-white px-4 py-3 text-sm text-slate-500">Loading categories...</p>
-      ) : null}
-
-      {error ? (
-        <p className="rounded-2xl bg-rose-100 px-4 py-3 text-sm text-rose-700">{error}</p>
-      ) : null}
-
-      {!loading && !error && userId && categories.length === 0 ? (
-        <p className="rounded-2xl bg-white px-4 py-3 text-sm text-slate-500">
-          No categories found for this user yet.
-        </p>
-      ) : null}
-
-      {!loading && !error && categories.length > 0 ? (
+      {!loading && !error && categories.length > 0 && (
         <TreeBranch
           expandedIds={expandedIds}
           nodes={categories}
@@ -177,7 +169,7 @@ export function CategoryTree() {
           selectedCategoryId={selectedCategoryId}
           toggleNode={toggleNode}
         />
-      ) : null}
+      )}
     </section>
   );
 }

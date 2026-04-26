@@ -3,80 +3,18 @@ import { Request, Response } from "express";
 
 import { prisma } from "../lib/prisma";
 import { uploadImageBuffer } from "../utils/storage";
-
-const getStringValue = (...values: unknown[]): string | undefined => {
-  for (const value of values) {
-    if (typeof value === "string") {
-      return value;
-    }
-  }
-
-  return undefined;
-};
-
-const hasOwnProperty = (target: object, key: string): boolean =>
-  Object.prototype.hasOwnProperty.call(target, key);
-
-const parseRequiredString = (value: unknown, fieldName: string): string => {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new Error(`${fieldName} is required.`);
-  }
-
-  return value.trim();
-};
-
-const parseOptionalString = (value: unknown): string | null | undefined => {
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const trimmedValue = value.trim();
-
-  return trimmedValue ? trimmedValue : null;
-};
-
-const parseNumber = (value: unknown, fieldName: string): number => {
-  const numericValue = Number(value);
-
-  if (!Number.isFinite(numericValue)) {
-    throw new Error(`${fieldName} must be a valid number.`);
-  }
-
-  return numericValue;
-};
-
-const parseDate = (value: unknown, fieldName: string): Date | null | undefined => {
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (typeof value !== "string") {
-    throw new Error(`${fieldName} must be a valid ISO date string.`);
-  }
-
-  const trimmedValue = value.trim();
-
-  if (!trimmedValue) {
-    return null;
-  }
-
-  const parsedDate = new Date(trimmedValue);
-
-  if (Number.isNaN(parsedDate.getTime())) {
-    throw new Error(`${fieldName} must be a valid ISO date string.`);
-  }
-
-  return parsedDate;
-};
+import {
+  getStringValue,
+  parseRequiredString,
+  parseOptionalString,
+  parseNumber,
+  parseDate,
+  hasOwnProperty
+} from "../utils/helpers";
 
 const itemInclude = {
   category: true,
-  location: true,
-  user: true
+  location: true
 } satisfies Prisma.ItemInclude;
 
 const validateItemRelations = async ({
@@ -88,11 +26,7 @@ const validateItemRelations = async ({
   categoryId: string;
   locationId: string;
 }): Promise<void> => {
-  const [user, category, location] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true }
-    }),
+  const [category, location] = await Promise.all([
     prisma.category.findUnique({
       where: { id: categoryId },
       select: { id: true, userId: true }
@@ -103,10 +37,6 @@ const validateItemRelations = async ({
     })
   ]);
 
-  if (!user) {
-    throw new Error("userId references a missing user.");
-  }
-
   if (!category) {
     throw new Error("categoryId references a missing category.");
   }
@@ -116,23 +46,21 @@ const validateItemRelations = async ({
   }
 
   if (category.userId !== userId) {
-    throw new Error("categoryId must belong to the same user.");
+    throw new Error("Category must belong to you.");
   }
 
   if (location.userId !== userId) {
-    throw new Error("locationId must belong to the same user.");
+    throw new Error("Location must belong to you.");
   }
 };
 
 export const createItem = async (req: Request, res: Response): Promise<Response> => {
   try {
+    const userId = req.user!.id;
+
     const name = parseRequiredString(req.body.name, "name");
     const quantity = parseNumber(req.body.quantity, "quantity");
     const unit = parseRequiredString(req.body.unit, "unit");
-    const userId = parseRequiredString(
-      getStringValue(req.body.userId, req.body.user_id),
-      "userId"
-    );
     const categoryId = parseRequiredString(
       getStringValue(req.body.categoryId, req.body.category_id),
       "categoryId"
@@ -150,11 +78,7 @@ export const createItem = async (req: Request, res: Response): Promise<Response>
       ) ?? null;
     const notes = parseOptionalString(req.body.notes) ?? null;
 
-    await validateItemRelations({
-      userId,
-      categoryId,
-      locationId
-    });
+    await validateItemRelations({ userId, categoryId, locationId });
 
     let imageUrl: string | null = null;
 
@@ -189,74 +113,99 @@ export const createItem = async (req: Request, res: Response): Promise<Response>
 
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
       return res.status(400).json({
-        message: "userId, categoryId, or locationId references an invalid record."
+        message: "categoryId or locationId references an invalid record."
       });
     }
 
     if (error instanceof Error) {
-      return res.status(400).json({
-        message: error.message
-      });
+      return res.status(400).json({ message: error.message });
     }
 
-    return res.status(500).json({
-      message: "Failed to create item."
-    });
+    return res.status(500).json({ message: "Failed to create item." });
   }
 };
 
 export const getItems = async (req: Request, res: Response): Promise<Response> => {
   try {
-    const userId = getStringValue(req.query.userId, req.query.user_id);
+    const userId = req.user!.id;
     const categoryId = getStringValue(req.query.categoryId, req.query.category_id);
     const locationId = getStringValue(req.query.locationId, req.query.location_id);
     const search = getStringValue(req.query.search);
 
-    const where: Prisma.ItemWhereInput = {};
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.ItemWhereInput = { userId };
 
     if (search) {
-      where.name = {
-        contains: search,
-        mode: "insensitive"
-      };
-    }
-
-    if (userId) {
-      where.userId = userId;
+      where.name = { contains: search, mode: "insensitive" };
     }
 
     if (categoryId) {
-      where.categoryId = categoryId;
+      const userCategories = await prisma.category.findMany({
+        where: { userId },
+        select: { id: true, parentCategoryId: true }
+      });
+
+      const childrenByParent = new Map<string, string[]>();
+      for (const cat of userCategories) {
+        if (cat.parentCategoryId) {
+          const arr = childrenByParent.get(cat.parentCategoryId) ?? [];
+          arr.push(cat.id);
+          childrenByParent.set(cat.parentCategoryId, arr);
+        }
+      }
+
+      const descendants = new Set<string>();
+      const queue: string[] = [categoryId];
+      while (queue.length > 0) {
+        const id = queue.shift()!;
+        if (descendants.has(id)) continue;
+        descendants.add(id);
+        for (const childId of childrenByParent.get(id) ?? []) queue.push(childId);
+      }
+
+      where.categoryId = { in: Array.from(descendants) };
     }
 
     if (locationId) {
       where.locationId = locationId;
     }
 
-    const items = await prisma.item.findMany({
-      where,
-      include: itemInclude,
-      orderBy: [{ createdAt: "desc" }]
-    });
+    const [items, total] = await Promise.all([
+      prisma.item.findMany({
+        where,
+        include: itemInclude,
+        orderBy: [{ createdAt: "desc" }],
+        skip,
+        take: limit
+      }),
+      prisma.item.count({ where })
+    ]);
 
-    return res.status(200).json(items);
+    return res.status(200).json({
+      items,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
   } catch (error) {
     console.error("Error fetching items:", error);
-
-    return res.status(500).json({
-      message: "Failed to fetch items."
-    });
+    return res.status(500).json({ message: "Failed to fetch items." });
   }
 };
 
 export const getItemById = async (req: Request, res: Response): Promise<Response> => {
   try {
+    const userId = req.user!.id;
     const itemId = getStringValue(req.params.id);
 
     if (!itemId) {
-      return res.status(400).json({
-        message: "Item id is required."
-      });
+      return res.status(400).json({ message: "Item id is required." });
     }
 
     const item = await prisma.item.findUnique({
@@ -265,29 +214,27 @@ export const getItemById = async (req: Request, res: Response): Promise<Response
     });
 
     if (!item) {
-      return res.status(404).json({
-        message: "Item not found."
-      });
+      return res.status(404).json({ message: "Item not found." });
+    }
+
+    if (item.userId !== userId) {
+      return res.status(403).json({ message: "You do not have access to this item." });
     }
 
     return res.status(200).json(item);
   } catch (error) {
     console.error("Error fetching item:", error);
-
-    return res.status(500).json({
-      message: "Failed to fetch item."
-    });
+    return res.status(500).json({ message: "Failed to fetch item." });
   }
 };
 
 export const updateItem = async (req: Request, res: Response): Promise<Response> => {
   try {
+    const userId = req.user!.id;
     const itemId = getStringValue(req.params.id);
 
     if (!itemId) {
-      return res.status(400).json({
-        message: "Item id is required."
-      });
+      return res.status(400).json({ message: "Item id is required." });
     }
 
     const existingItem = await prisma.item.findUnique({
@@ -295,9 +242,11 @@ export const updateItem = async (req: Request, res: Response): Promise<Response>
     });
 
     if (!existingItem) {
-      return res.status(404).json({
-        message: "Item not found."
-      });
+      return res.status(404).json({ message: "Item not found." });
+    }
+
+    if (existingItem.userId !== userId) {
+      return res.status(403).json({ message: "You do not have access to this item." });
     }
 
     const data: Prisma.ItemUncheckedUpdateInput = {};
@@ -312,11 +261,6 @@ export const updateItem = async (req: Request, res: Response): Promise<Response>
 
     if (hasOwnProperty(req.body, "unit")) {
       data.unit = parseRequiredString(req.body.unit, "unit");
-    }
-
-    const userId = getStringValue(req.body.userId, req.body.user_id);
-    if (userId !== undefined) {
-      data.userId = parseRequiredString(userId, "userId");
     }
 
     const categoryId = getStringValue(req.body.categoryId, req.body.category_id);
@@ -340,24 +284,20 @@ export const updateItem = async (req: Request, res: Response): Promise<Response>
       );
     }
 
-    if (
-      hasOwnProperty(req.body, "warrantyExpiry") ||
-      hasOwnProperty(req.body, "warranty_expiry")
-    ) {
+    if (hasOwnProperty(req.body, "warrantyExpiry") || hasOwnProperty(req.body, "warranty_expiry")) {
       data.warrantyExpiry = parseDate(
         getStringValue(req.body.warrantyExpiry, req.body.warranty_expiry),
         "warrantyExpiry"
       );
     }
 
-    const resolvedUserId = typeof data.userId === "string" ? data.userId : existingItem.userId;
     const resolvedCategoryId =
       typeof data.categoryId === "string" ? data.categoryId : existingItem.categoryId;
     const resolvedLocationId =
       typeof data.locationId === "string" ? data.locationId : existingItem.locationId;
 
     await validateItemRelations({
-      userId: resolvedUserId,
+      userId,
       categoryId: resolvedCategoryId,
       locationId: resolvedLocationId
     });
@@ -383,63 +323,57 @@ export const updateItem = async (req: Request, res: Response): Promise<Response>
 
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
       return res.status(400).json({
-        message: "userId, categoryId, or locationId references an invalid record."
+        message: "categoryId or locationId references an invalid record."
       });
     }
 
     if (error instanceof Error) {
-      return res.status(400).json({
-        message: error.message
-      });
+      return res.status(400).json({ message: error.message });
     }
 
-    return res.status(500).json({
-      message: "Failed to update item."
-    });
+    return res.status(500).json({ message: "Failed to update item." });
   }
 };
 
 export const deleteItem = async (req: Request, res: Response): Promise<Response> => {
   try {
+    const userId = req.user!.id;
     const itemId = getStringValue(req.params.id);
 
     if (!itemId) {
-      return res.status(400).json({
-        message: "Item id is required."
-      });
+      return res.status(400).json({ message: "Item id is required." });
     }
 
-    await prisma.item.delete({
-      where: { id: itemId }
+    const item = await prisma.item.findUnique({
+      where: { id: itemId },
+      select: { userId: true }
     });
 
-    return res.status(200).json({
-      message: "Item deleted successfully."
-    });
+    if (!item) {
+      return res.status(404).json({ message: "Item not found." });
+    }
+
+    if (item.userId !== userId) {
+      return res.status(403).json({ message: "You do not have access to this item." });
+    }
+
+    await prisma.item.delete({ where: { id: itemId } });
+
+    return res.status(200).json({ message: "Item deleted successfully." });
   } catch (error: unknown) {
     console.error("Error deleting item:", error);
 
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
-      return res.status(404).json({
-        message: "Item not found."
-      });
+      return res.status(404).json({ message: "Item not found." });
     }
 
-    return res.status(500).json({
-      message: "Failed to delete item."
-    });
+    return res.status(500).json({ message: "Failed to delete item." });
   }
 };
 
 export const getAlertItems = async (req: Request, res: Response): Promise<Response> => {
   try {
-    const userId = getStringValue(req.query.userId, req.query.user_id);
-
-    if (!userId) {
-      return res.status(400).json({
-        message: "userId is required."
-      });
-    }
+    const userId = req.user!.id;
 
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
@@ -459,9 +393,6 @@ export const getAlertItems = async (req: Request, res: Response): Promise<Respon
     return res.status(200).json(items);
   } catch (error) {
     console.error("Error fetching alert items:", error);
-
-    return res.status(500).json({
-      message: "Failed to fetch alert items."
-    });
+    return res.status(500).json({ message: "Failed to fetch alert items." });
   }
 };

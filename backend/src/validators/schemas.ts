@@ -39,8 +39,6 @@ export const createItemSchema = z.object({
     .string({ required_error: "Unit is required." })
     .trim()
     .min(1, "Unit cannot be empty."),
-  userId: z.string().trim().min(1, "userId is required.").optional(),
-  user_id: z.string().trim().min(1).optional(),
   categoryId: z.string().trim().min(1, "categoryId is required.").optional(),
   category_id: z.string().trim().min(1).optional(),
   locationId: z.string().trim().min(1, "locationId is required.").optional(),
@@ -58,8 +56,14 @@ export const createCategorySchema = z.object({
     .trim()
     .min(1, "Category name cannot be empty.")
     .max(100, "Category name must be at most 100 characters."),
-  userId: z.string().trim().min(1, "userId is required.").optional(),
-  user_id: z.string().trim().min(1).optional(),
   parentCategoryId: z.string().trim().nullable().optional(),
   parent_category_id: z.string().trim().nullable().optional()
+});
+
+export const createLocationSchema = z.object({
+  name: z
+    .string({ required_error: "Location name is required." })
+    .trim()
+    .min(1, "Location name cannot be empty.")
+    .max(100, "Location name must be at most 100 characters.")
 });

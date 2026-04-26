@@ -2,13 +2,11 @@ import { v2 as cloudinary } from "cloudinary";
 
 import { UploadImageBufferInput, StorageAdapter } from "./types";
 
-export const uploadImageBuffer = async ({
-  buffer,
-  originalName,
-  mimeType,
-  folder = "items"
-}: UploadImageBufferInput): Promise<string> => {
-  // Ensure Cloudinary is configured
+let configured = false;
+
+const ensureConfigured = (): void => {
+  if (configured) return;
+
   if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
     throw new Error("Cloudinary credentials are not configured.");
   }
@@ -18,6 +16,17 @@ export const uploadImageBuffer = async ({
     api_key: process.env.CLOUDINARY_API_KEY,
     api_secret: process.env.CLOUDINARY_API_SECRET
   });
+
+  configured = true;
+};
+
+export const uploadImageBuffer = async ({
+  buffer,
+  originalName,
+  mimeType,
+  folder = "items"
+}: UploadImageBufferInput): Promise<string> => {
+  ensureConfigured();
 
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(

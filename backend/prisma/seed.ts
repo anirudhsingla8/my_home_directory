@@ -20,11 +20,6 @@ interface CategoryDefinition {
   children?: CategoryDefinition[];
 }
 
-type CategoryDefinition = {
-  name: string;
-  children: { name: string }[];
-};
-
 const DEFAULT_CATEGORIES: CategoryDefinition[] = [
   // 🍎 High-Frequency Consumables
   {

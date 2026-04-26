@@ -1,5 +1,5 @@
 import axios from "axios";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -16,8 +16,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { api, AuthResponse } from "../api";
 import { useAuth } from "../context/AuthContext";
+import { ThemeColors, useTheme } from "../context/ThemeContext";
 
 export default function AuthScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const { login } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
@@ -75,7 +78,7 @@ export default function AuthScreen() {
                 <Text style={styles.label}>Display Name</Text>
                 <TextInput
                   placeholder="John Doe"
-                  placeholderTextColor="#64748b"
+                  placeholderTextColor={colors.textMuted}
                   style={styles.input}
                   value={name}
                   onChangeText={setName}
@@ -88,7 +91,7 @@ export default function AuthScreen() {
               autoCapitalize="none"
               keyboardType="email-address"
               placeholder="you@example.com"
-              placeholderTextColor="#64748b"
+              placeholderTextColor={colors.textMuted}
               style={styles.input}
               value={email}
               onChangeText={setEmail}
@@ -98,7 +101,7 @@ export default function AuthScreen() {
             <TextInput
               secureTextEntry
               placeholder="••••••••"
-              placeholderTextColor="#64748b"
+              placeholderTextColor={colors.textMuted}
               style={styles.input}
               value={password}
               onChangeText={setPassword}
@@ -110,7 +113,7 @@ export default function AuthScreen() {
               onPress={handleSubmit}
             >
               {loading ? (
-                <ActivityIndicator color="#ffffff" />
+                <ActivityIndicator color="#0f172a" />
               ) : (
                 <Text style={styles.primaryButtonText}>{isLogin ? "Sign In" : "Sign Up"}</Text>
               )}
@@ -128,84 +131,47 @@ export default function AuthScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#0f172a"
-  },
-  flex: {
-    flex: 1
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: "center",
-    padding: 20
-  },
-  headerCard: {
-    alignItems: "center",
-    marginBottom: 32
-  },
-  title: {
-    color: "#ffffff",
-    fontSize: 28,
-    fontWeight: "700"
-  },
-  subtitle: {
-    color: "#94a3b8",
-    fontSize: 15,
-    marginTop: 8
-  },
-  card: {
-    borderRadius: 24,
-    backgroundColor: "#ffffff",
-    padding: 24,
-    shadowColor: "#0f172a",
-    shadowOpacity: 0.1,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8
-  },
-  label: {
-    marginBottom: 8,
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#334155"
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 16,
-    backgroundColor: "#f8fafc",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    color: "#0f172a",
-    fontSize: 15,
-    marginBottom: 16
-  },
-  primaryButton: {
-    marginTop: 8,
-    borderRadius: 999,
-    backgroundColor: "#fbbf24",
-    minHeight: 56,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 16
-  },
-  primaryButtonDisabled: {
-    opacity: 0.7
-  },
-  primaryButtonText: {
-    color: "#0f172a",
-    fontSize: 16,
-    fontWeight: "700"
-  },
-  switchButton: {
-    alignItems: "center",
-    paddingVertical: 8
-  },
-  switchButtonText: {
-    color: "#64748b",
-    fontSize: 14,
-    fontWeight: "600"
-  }
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    safeArea: { flex: 1, backgroundColor: "#0f172a" },
+    flex: { flex: 1 },
+    scrollContent: { flexGrow: 1, justifyContent: "center", padding: 20 },
+    headerCard: { alignItems: "center", marginBottom: 32 },
+    title: { color: "#ffffff", fontSize: 28, fontWeight: "700" },
+    subtitle: { color: "#94a3b8", fontSize: 15, marginTop: 8 },
+    card: {
+      borderRadius: 24,
+      backgroundColor: colors.bgCard,
+      padding: 24,
+      shadowColor: "#000000",
+      shadowOpacity: 0.2,
+      shadowRadius: 16,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 8
+    },
+    label: { marginBottom: 8, fontSize: 14, fontWeight: "600", color: colors.textSecondary },
+    input: {
+      borderWidth: 1,
+      borderColor: colors.borderStrong,
+      borderRadius: 16,
+      backgroundColor: colors.bgInput,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      color: colors.textPrimary,
+      fontSize: 15,
+      marginBottom: 16
+    },
+    primaryButton: {
+      marginTop: 8,
+      borderRadius: 999,
+      backgroundColor: colors.amber,
+      minHeight: 56,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 16
+    },
+    primaryButtonDisabled: { opacity: 0.7 },
+    primaryButtonText: { color: "#0f172a", fontSize: 16, fontWeight: "700" },
+    switchButton: { alignItems: "center", paddingVertical: 8 },
+    switchButtonText: { color: colors.textMuted, fontSize: 14, fontWeight: "600" }
+  });

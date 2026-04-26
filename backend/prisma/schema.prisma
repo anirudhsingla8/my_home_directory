@@ -36,6 +36,7 @@ model Location {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([userId])
+  @@unique([userId, name])
   @@map("locations")
 }
 
