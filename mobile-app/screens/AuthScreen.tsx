@@ -13,10 +13,14 @@ import {
   View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+
+import ForgotPasswordModal from "./components/ForgotPasswordModal";
 
 import { api, AuthResponse } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { ThemeColors, useTheme } from "../context/ThemeContext";
+import { isPasswordValid, passwordRules } from "../lib/passwordPolicy";
 
 export default function AuthScreen() {
   const { colors } = useTheme();
@@ -27,10 +31,23 @@ export default function AuthScreen() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
+
+  const ruleResults = useMemo(
+    () => passwordRules.map((r) => ({ ...r, pass: r.test(password) })),
+    [password]
+  );
+  const passwordOk = isLogin || isPasswordValid(password);
 
   const handleSubmit = async () => {
     if (!email || !password || (!isLogin && !name)) {
       Alert.alert("Error", "Please fill in all required fields.");
+      return;
+    }
+
+    if (!isLogin && !passwordOk) {
+      Alert.alert("Weak password", "Password doesn't meet all the requirements yet.");
       return;
     }
 
@@ -98,18 +115,43 @@ export default function AuthScreen() {
             />
 
             <Text style={styles.label}>Password</Text>
-            <TextInput
-              secureTextEntry
-              placeholder="••••••••"
-              placeholderTextColor={colors.textMuted}
-              style={styles.input}
-              value={password}
-              onChangeText={setPassword}
-            />
+            <View style={styles.inputWrapper}>
+              <TextInput
+                secureTextEntry={!showPassword}
+                placeholder="••••••••"
+                placeholderTextColor={colors.textMuted}
+                style={[styles.input, { paddingRight: 44, marginBottom: 0 }]}
+                value={password}
+                onChangeText={setPassword}
+              />
+              <Pressable
+                onPress={() => setShowPassword((v) => !v)}
+                style={styles.eyeBtn}
+                hitSlop={8}
+                accessibilityLabel={showPassword ? "Hide password" : "Show password"}
+              >
+                <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color={colors.textMuted} />
+              </Pressable>
+            </View>
+
+            {!isLogin && password.length > 0 && (
+              <View style={styles.rulesBox}>
+                {ruleResults.map((r) => (
+                  <View key={r.id} style={styles.ruleRow}>
+                    <Text style={[styles.ruleIcon, { color: r.pass ? colors.emerald : colors.textFaint }]}>
+                      {r.pass ? "✓" : "○"}
+                    </Text>
+                    <Text style={[styles.ruleText, { color: r.pass ? colors.textSecondary : colors.textMuted }]}>
+                      {r.label}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
 
             <Pressable
-              style={[styles.primaryButton, loading && styles.primaryButtonDisabled]}
-              disabled={loading}
+              style={[styles.primaryButton, (loading || (!isLogin && !passwordOk)) && styles.primaryButtonDisabled]}
+              disabled={loading || (!isLogin && !passwordOk)}
               onPress={handleSubmit}
             >
               {loading ? (
@@ -119,6 +161,12 @@ export default function AuthScreen() {
               )}
             </Pressable>
 
+            {isLogin && (
+              <Pressable onPress={() => setForgotOpen(true)} style={styles.forgotButton}>
+                <Text style={styles.forgotText}>Forgot password?</Text>
+              </Pressable>
+            )}
+
             <Pressable onPress={() => setIsLogin(!isLogin)} style={styles.switchButton}>
               <Text style={styles.switchButtonText}>
                 {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
@@ -127,6 +175,12 @@ export default function AuthScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <ForgotPasswordModal
+        visible={forgotOpen}
+        initialEmail={email}
+        onClose={() => setForgotOpen(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -172,6 +226,22 @@ const makeStyles = (colors: ThemeColors) =>
     },
     primaryButtonDisabled: { opacity: 0.7 },
     primaryButtonText: { color: "#0f172a", fontSize: 16, fontWeight: "700" },
+    inputWrapper: { position: "relative", marginBottom: 16 },
+    eyeBtn: { position: "absolute", right: 14, top: 0, bottom: 0, justifyContent: "center" },
     switchButton: { alignItems: "center", paddingVertical: 8 },
-    switchButtonText: { color: colors.textMuted, fontSize: 14, fontWeight: "600" }
+    switchButtonText: { color: colors.textMuted, fontSize: 14, fontWeight: "600" },
+    forgotButton: { alignItems: "center", paddingVertical: 6, marginTop: -4 },
+    forgotText: { color: colors.textMuted, fontSize: 13, fontWeight: "600" },
+    rulesBox: {
+      marginTop: 4,
+      marginBottom: 12,
+      borderRadius: 12,
+      backgroundColor: colors.bgInput,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      gap: 4
+    },
+    ruleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    ruleIcon: { fontSize: 13, width: 14, textAlign: "center" },
+    ruleText: { fontSize: 12 }
   });

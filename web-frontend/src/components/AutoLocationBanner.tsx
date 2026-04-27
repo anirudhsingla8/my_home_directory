@@ -2,31 +2,40 @@ import axios from "axios";
 import { useEffect, useState } from "react";
 
 import { createLocation, detectCityFromIP, showToast } from "../api";
+import { useAuth } from "../context/AuthContext";
 import { useInventory } from "../context/InventoryContext";
 
-const SKIP_FLAG = "inv:autoLocSkipped";
+const skipFlagKey = (userId: string | null | undefined) =>
+  `inv:autoLocSkipped:${userId ?? "anon"}`;
 
-const wasSkipped = (): boolean => {
+const wasSkipped = (key: string): boolean => {
   try {
-    return localStorage.getItem(SKIP_FLAG) === "true";
+    return localStorage.getItem(key) === "true";
   } catch {
     return false;
   }
 };
 
-const markSkipped = () => {
+const markSkipped = (key: string) => {
   try {
-    localStorage.setItem(SKIP_FLAG, "true");
+    localStorage.setItem(key, "true");
   } catch {
     /* ignore quota errors */
   }
 };
 
 export function AutoLocationBanner() {
+  const { user } = useAuth();
   const { locations, reloadLocations, setSelectedLocationId } = useInventory();
+  const skipKey = skipFlagKey(user?.id);
   const [detectedCity, setDetectedCity] = useState<string | null>(null);
-  const [skipped, setSkipped] = useState<boolean>(() => wasSkipped());
+  const [skipped, setSkipped] = useState<boolean>(() => wasSkipped(skipKey));
   const [submitting, setSubmitting] = useState(false);
+
+  // Re-evaluate skipped state when the active user changes.
+  useEffect(() => {
+    setSkipped(wasSkipped(skipKey));
+  }, [skipKey]);
 
   useEffect(() => {
     if (skipped) return;
@@ -69,7 +78,7 @@ export function AutoLocationBanner() {
   };
 
   const handleSkip = () => {
-    markSkipped();
+    markSkipped(skipKey);
     setSkipped(true);
   };
 

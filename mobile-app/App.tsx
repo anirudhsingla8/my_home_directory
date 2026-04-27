@@ -6,11 +6,13 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import AddItemScreen from "./screens/AddItemScreen";
 import HomeScreen from "./screens/HomeScreen";
 import AuthScreen from "./screens/AuthScreen";
+import ProfileScreen from "./screens/ProfileScreen";
+import ShoppingListScreen from "./screens/ShoppingListScreen";
 import { InventoryProvider, useInventory } from "./context/InventoryContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ThemeColors, ThemeName, ThemeProvider, useTheme } from "./context/ThemeContext";
 
-type ScreenKey = "home" | "add";
+type ScreenKey = "home" | "add" | "shopping" | "profile";
 
 const themeIcon: Record<ThemeName, string> = {
   light: "☀",
@@ -79,8 +81,24 @@ function AppContent() {
             onPress={() => setActiveScreen("add")}
           >
             <Text style={[styles.navText, activeScreen === "add" && styles.navTextActive]}>
-              Add Item
+              Add
             </Text>
+          </Pressable>
+
+          <Pressable
+            style={[styles.iconButton, activeScreen === "shopping" && styles.iconButtonActive]}
+            onPress={() => setActiveScreen("shopping")}
+            accessibilityLabel="Shopping list"
+          >
+            <Text style={[styles.iconText, activeScreen === "shopping" && styles.iconTextActive]}>🛒</Text>
+          </Pressable>
+
+          <Pressable
+            style={[styles.iconButton, activeScreen === "profile" && styles.iconButtonActive]}
+            onPress={() => setActiveScreen("profile")}
+            accessibilityLabel="Account settings"
+          >
+            <Text style={[styles.iconText, activeScreen === "profile" && styles.iconTextActive]}>👤</Text>
           </Pressable>
 
           <ThemeToggle />
@@ -96,17 +114,22 @@ function AppContent() {
         </View>
 
         <View style={styles.screenContainer}>
-          {activeScreen === "home" ? (
-            <HomeScreen
-              onOpenAdd={() => setActiveScreen("add")}
-            />
-          ) : (
+          {activeScreen === "home" && (
+            <HomeScreen onOpenAdd={() => setActiveScreen("add")} />
+          )}
+          {activeScreen === "add" && (
             <AddItemScreen
               onCreated={() => {
                 triggerRefresh();
                 setActiveScreen("home");
               }}
             />
+          )}
+          {activeScreen === "shopping" && (
+            <ShoppingListScreen />
+          )}
+          {activeScreen === "profile" && (
+            <ProfileScreen onBack={() => setActiveScreen("home")} />
           )}
         </View>
       </View>
@@ -153,6 +176,22 @@ const makeStyles = (colors: ThemeColors) =>
     },
     navText: { color: colors.textPrimary, fontWeight: "700", fontSize: 14 },
     navTextActive: { color: colors.textOnStrong },
+    iconButton: {
+      width: 46,
+      height: 46,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.borderStrong,
+      backgroundColor: colors.bgCard,
+      alignItems: "center",
+      justifyContent: "center"
+    },
+    iconButtonActive: {
+      backgroundColor: colors.bgStrong,
+      borderColor: colors.bgStrong
+    },
+    iconText: { fontSize: 18 },
+    iconTextActive: { color: colors.textOnStrong },
     logoutButton: {
       minHeight: 46,
       paddingHorizontal: 14,

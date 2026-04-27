@@ -4,17 +4,19 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { CategoryOption, createItem, fetchCategoryTree, flattenCategoryTree, showToast } from "../api";
 import { useInventory } from "../context/InventoryContext";
 import { CategoryPicker } from "./CategoryPicker";
+import { GROUP_LABELS, UNITS, UnitGroup, findUnit, isQuantityValidForUnit } from "../lib/units";
 
 type FormState = {
   name: string;
   quantity: string;
+  minQuantity: string;
   unit: string;
   categoryId: string;
   expiryDate: string;
   imageFile: File | null;
 };
 
-type FieldErrors = Partial<Record<"name" | "quantity" | "unit" | "categoryId" | "submit", string>>;
+type FieldErrors = Partial<Record<"name" | "quantity" | "minQuantity" | "unit" | "categoryId" | "submit", string>>;
 
 const LS_LAST_UNIT = "inv:lastUnit";
 const LS_LAST_CATEGORY = "inv:lastCategoryId";
@@ -35,14 +37,19 @@ const writeLocal = (key: string, value: string) => {
   }
 };
 
-const buildInitialState = (): FormState => ({
-  name: "",
-  quantity: "1",
-  unit: readLocal(LS_LAST_UNIT) || "pcs",
-  categoryId: readLocal(LS_LAST_CATEGORY),
-  expiryDate: "",
-  imageFile: null
-});
+const buildInitialState = (): FormState => {
+  const stored = readLocal(LS_LAST_UNIT);
+  const unit = UNITS.some((u) => u.value === stored) ? stored : "pcs";
+  return {
+    name: "",
+    quantity: "1",
+    minQuantity: "1",
+    unit,
+    categoryId: readLocal(LS_LAST_CATEGORY),
+    expiryDate: "",
+    imageFile: null
+  };
+};
 
 type ItemFormProps = {
   onCreated?: () => void;
@@ -106,6 +113,40 @@ export function ItemForm({ onCreated }: ItemFormProps) {
     };
   };
 
+  const handleUnitChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const next = event.target.value;
+    setFormState((current) => {
+      const def = findUnit(next);
+      const round = def && !def.allowsDecimals;
+      const trimDecimal = (s: string) => {
+        if (!s) return s;
+        const n = Number(s);
+        if (Number.isNaN(n)) return s;
+        return Math.floor(n).toString();
+      };
+      return {
+        ...current,
+        unit: next,
+        quantity: round ? trimDecimal(current.quantity) : current.quantity,
+        minQuantity: round ? trimDecimal(current.minQuantity) : current.minQuantity
+      };
+    });
+    if (errors.unit || errors.quantity || errors.minQuantity) {
+      setErrors((prev) => ({ ...prev, unit: undefined, quantity: undefined, minQuantity: undefined }));
+    }
+  };
+
+  const groupedUnits = useMemo(() => {
+    const groups: Record<UnitGroup, typeof UNITS> = {
+      count: [], weight: [], volume: [], length: []
+    };
+    for (const u of UNITS) groups[u.group].push(u);
+    return groups;
+  }, []);
+
+  const currentUnitDef = findUnit(formState.unit);
+  const allowsDecimals = currentUnitDef ? currentUnitDef.allowsDecimals : true;
+
   const updateImage = (event: ChangeEvent<HTMLInputElement>) => {
     setFormState((current) => ({ ...current, imageFile: event.target.files?.[0] ?? null }));
   };
@@ -123,6 +164,16 @@ export function ItemForm({ onCreated }: ItemFormProps) {
     const qty = Number(formState.quantity);
     if (!formState.quantity || Number.isNaN(qty) || qty < 0) {
       next.quantity = "Enter a non-negative number.";
+    } else if (formState.unit && !isQuantityValidForUnit(qty, formState.unit)) {
+      next.quantity = `${formState.unit} must be a whole number.`;
+    }
+    if (formState.minQuantity !== "") {
+      const min = Number(formState.minQuantity);
+      if (Number.isNaN(min) || min < 0) {
+        next.minQuantity = "Enter a non-negative number.";
+      } else if (formState.unit && !isQuantityValidForUnit(min, formState.unit)) {
+        next.minQuantity = `${formState.unit} must be a whole number.`;
+      }
     }
     if (!formState.unit.trim()) next.unit = "Unit is required.";
     if (!formState.categoryId) next.categoryId = "Select a subcategory.";
@@ -146,6 +197,7 @@ export function ItemForm({ onCreated }: ItemFormProps) {
       const createdItem = await createItem({
         name: formState.name.trim(),
         quantity: Number(formState.quantity),
+        minQuantity: formState.minQuantity === "" ? undefined : Number(formState.minQuantity),
         unit: formState.unit.trim(),
         categoryId: formState.categoryId,
         locationId: selectedLocationId,
@@ -159,6 +211,7 @@ export function ItemForm({ onCreated }: ItemFormProps) {
       setFormState({
         name: "",
         quantity: "1",
+        minQuantity: formState.minQuantity,
         unit: formState.unit,
         categoryId: formState.categoryId,
         expiryDate: "",
@@ -225,7 +278,7 @@ export function ItemForm({ onCreated }: ItemFormProps) {
             <input
               type="number"
               min="0"
-              step="0.01"
+              step={allowsDecimals ? "0.01" : "1"}
               value={formState.quantity}
               onChange={updateField("quantity")}
               aria-invalid={!!errors.quantity}
@@ -236,16 +289,40 @@ export function ItemForm({ onCreated }: ItemFormProps) {
 
           <label className="space-y-1.5">
             <span className="text-xs font-medium text-slate-500">
-              Unit <span className="text-rose-500">*</span>
+              Min stock <span className="text-slate-400">(alert below)</span>
             </span>
             <input
-              type="text"
+              type="number"
+              min="0"
+              step={allowsDecimals ? "0.01" : "1"}
+              value={formState.minQuantity}
+              onChange={updateField("minQuantity")}
+              aria-invalid={!!errors.minQuantity}
+              className={fieldClass("minQuantity")}
+            />
+            <FieldError field="minQuantity" />
+          </label>
+
+          <label className="space-y-1.5">
+            <span className="text-xs font-medium text-slate-500">
+              Unit <span className="text-rose-500">*</span>
+            </span>
+            <select
               value={formState.unit}
-              onChange={updateField("unit")}
-              placeholder="kg, pcs, L..."
+              onChange={handleUnitChange}
               aria-invalid={!!errors.unit}
               className={fieldClass("unit")}
-            />
+            >
+              {(Object.keys(groupedUnits) as UnitGroup[]).map((group) => (
+                <optgroup key={group} label={GROUP_LABELS[group]}>
+                  {groupedUnits[group].map((u) => (
+                    <option key={u.value} value={u.value}>
+                      {u.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
             <FieldError field="unit" />
           </label>
 

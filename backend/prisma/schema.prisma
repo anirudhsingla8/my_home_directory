@@ -11,19 +11,65 @@ enum Role {
   USER
 }
 
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
 model User {
-  id         String     @id @default(uuid()) @db.Uuid
-  email      String     @unique
-  password   String
-  name       String?
-  role       Role       @default(USER)
-  locations  Location[]
-  categories Category[]
-  items      Item[]
-  createdAt  DateTime   @default(now()) @map("created_at")
-  updatedAt  DateTime   @updatedAt @map("updated_at")
+  id                 String              @id @default(uuid()) @db.Uuid
+  email              String              @unique
+  password           String
+  name               String?
+  role               Role                @default(USER)
+  gender             Gender?
+  dateOfBirth        DateTime?           @map("date_of_birth") @db.Date
+  locations          Location[]
+  categories         Category[]
+  items              Item[]
+  shoppingListItems  ShoppingListItem[]
+  passwordResetOtps  PasswordResetOtp[]
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
 
   @@map("users")
+}
+
+model ShoppingListItem {
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name              String
+  quantity          Float     @default(1)
+  unit              String?
+  notes             String?
+  completed         Boolean   @default(false)
+  completedAt       DateTime? @map("completed_at")
+  createdFromItemId String?   @map("created_from_item_id") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([userId, completed])
+  @@map("shopping_list_items")
+}
+
+model PasswordResetOtp {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  otpHash      String    @map("otp_hash")
+  expiresAt    DateTime  @map("expires_at")
+  attempts     Int       @default(0)
+  resendCount  Int       @default(0) @map("resend_count")
+  consumedAt   DateTime? @map("consumed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_otps")
 }
 
 model Location {
@@ -40,12 +86,17 @@ model Location {
   @@map("locations")
 }
 
+// Categories are now global (shared across all users). `userId` is kept as
+// nullable for backwards compatibility with legacy per-user categories
+// created before the global model. Global categories have `userId = null`.
+// All read endpoints filter to globals; legacy per-user rows remain only so
+// pre-existing items don't lose their FK target.
 model Category {
   id               String     @id @default(uuid()) @db.Uuid
   name             String
-  userId           String     @map("user_id") @db.Uuid
+  userId           String?    @map("user_id") @db.Uuid
   parentCategoryId String?    @map("parent_category_id") @db.Uuid
-  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user             User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
   parent           Category?  @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id], onDelete: SetNull)
   children         Category[] @relation("CategoryHierarchy")
   items            Item[]
@@ -62,6 +113,7 @@ model Item {
   id             String    @id @default(uuid()) @db.Uuid
   name           String
   quantity       Float
+  minQuantity    Float     @default(1) @map("min_quantity")
   unit           String
   userId         String    @map("user_id") @db.Uuid
   categoryId     String    @map("category_id") @db.Uuid

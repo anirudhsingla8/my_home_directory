@@ -21,6 +21,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 
 import { CategoryOption, Location, api, flattenCategoryTree, fetchLocations, createLocationApi } from "../api";
 import { useInventory } from "../context/InventoryContext";
+import { GROUP_LABELS, UNITS, UnitGroup, findUnit } from "../lib/units";
 
 type AddItemScreenProps = {
   onCreated?: () => void;
@@ -29,6 +30,7 @@ type AddItemScreenProps = {
 type FormState = {
   name: string;
   quantity: string;
+  minQuantity: string;
   unit: string;
   categoryId: string;
   expiryDate: string;
@@ -45,6 +47,7 @@ type ReactNativeUploadFile = {
 const initialFormState: FormState = {
   name: "",
   quantity: "1",
+  minQuantity: "1",
   unit: "pcs",
   categoryId: "",
   expiryDate: ""
@@ -64,6 +67,7 @@ export default function AddItemScreen({ onCreated }: AddItemScreenProps) {
   const [selectedImage, setSelectedImage] = useState<PickerAsset>(null);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [locationModalVisible, setLocationModalVisible] = useState(false);
+  const [unitModalVisible, setUnitModalVisible] = useState(false);
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [newLocationName, setNewLocationName] = useState("");
@@ -112,6 +116,42 @@ export default function AddItemScreen({ onCreated }: AddItemScreenProps) {
 
   const updateField = (field: keyof FormState, value: string) => {
     setFormState((current) => ({ ...current, [field]: value }));
+  };
+
+  const handleUnitSelect = (unitValue: string) => {
+    setFormState((current) => {
+      const def = findUnit(unitValue);
+      const round = def && !def.allowsDecimals;
+      const trimDecimal = (s: string) => {
+        if (!s) return s;
+        const n = Number(s);
+        if (Number.isNaN(n)) return s;
+        return Math.floor(n).toString();
+      };
+      return {
+        ...current,
+        unit: unitValue,
+        quantity: round ? trimDecimal(current.quantity) : current.quantity,
+        minQuantity: round ? trimDecimal(current.minQuantity) : current.minQuantity
+      };
+    });
+    setUnitModalVisible(false);
+  };
+
+  const groupedUnits = useMemo(() => {
+    const groups: Record<UnitGroup, typeof UNITS> = {
+      count: [], weight: [], volume: [], length: []
+    };
+    for (const u of UNITS) groups[u.group].push(u);
+    return groups;
+  }, []);
+
+  const currentUnitDef = findUnit(formState.unit);
+  const allowsDecimals = currentUnitDef ? currentUnitDef.allowsDecimals : true;
+
+  const sanitizeQuantity = (raw: string): string => {
+    if (allowsDecimals) return raw.replace(/[^\d.]/g, "");
+    return raw.replace(/\D/g, "");
   };
 
   const pickFromGallery = async () => {
@@ -176,6 +216,15 @@ export default function AddItemScreen({ onCreated }: AddItemScreenProps) {
       return;
     }
 
+    if (!allowsDecimals && !Number.isInteger(Number(formState.quantity))) {
+      Alert.alert("Invalid Quantity", `${formState.unit} must be a whole number.`);
+      return;
+    }
+    if (!allowsDecimals && formState.minQuantity.trim() && !Number.isInteger(Number(formState.minQuantity))) {
+      Alert.alert("Invalid Min Stock", `${formState.unit} must be a whole number.`);
+      return;
+    }
+
     if (!isValidExpiryDate(formState.expiryDate)) {
       Alert.alert("Invalid Date", "Expiry date must be in YYYY-MM-DD format.");
       return;
@@ -189,6 +238,9 @@ export default function AddItemScreen({ onCreated }: AddItemScreenProps) {
       formData.append("locationId", selectedLocationId);
       formData.append("name", formState.name.trim());
       formData.append("quantity", formState.quantity.trim());
+      if (formState.minQuantity.trim()) {
+        formData.append("minQuantity", formState.minQuantity.trim());
+      }
       formData.append("unit", formState.unit.trim() || "pcs");
       formData.append("categoryId", formState.categoryId);
 
@@ -257,22 +309,29 @@ export default function AddItemScreen({ onCreated }: AddItemScreenProps) {
 
             <Text style={styles.label}>Quantity</Text>
             <TextInput
-              keyboardType="decimal-pad"
+              keyboardType={allowsDecimals ? "decimal-pad" : "number-pad"}
               placeholder="1"
               placeholderTextColor={colors.textMuted}
               style={styles.input}
               value={formState.quantity}
-              onChangeText={(value) => updateField("quantity", value)}
+              onChangeText={(value) => updateField("quantity", sanitizeQuantity(value))}
+            />
+
+            <Text style={styles.label}>Min stock <Text style={styles.optional}>(alert below)</Text></Text>
+            <TextInput
+              keyboardType={allowsDecimals ? "decimal-pad" : "number-pad"}
+              placeholder="1"
+              placeholderTextColor={colors.textMuted}
+              style={styles.input}
+              value={formState.minQuantity}
+              onChangeText={(value) => updateField("minQuantity", sanitizeQuantity(value))}
             />
 
             <Text style={styles.label}>Unit</Text>
-            <TextInput
-              placeholder="pcs"
-              placeholderTextColor={colors.textMuted}
-              style={styles.input}
-              value={formState.unit}
-              onChangeText={(value) => updateField("unit", value)}
-            />
+            <Pressable style={styles.selector} onPress={() => setUnitModalVisible(true)}>
+              <Text style={styles.selectorText}>{formState.unit || "Select unit"}</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 16 }}>{"›"}</Text>
+            </Pressable>
 
             <Text style={styles.label}>Expiry Date <Text style={styles.optional}>(optional)</Text></Text>
             <TextInput
@@ -511,6 +570,41 @@ export default function AddItemScreen({ onCreated }: AddItemScreenProps) {
             </View>
           </View>
         </Modal>
+
+        {/* Unit Picker Modal */}
+        <Modal visible={unitModalVisible} animationType="slide" transparent>
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Select Unit</Text>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {(Object.keys(groupedUnits) as UnitGroup[]).map((group) => (
+                  <View key={group}>
+                    <Text style={styles.unitGroupLabel}>{GROUP_LABELS[group]}</Text>
+                    <View style={styles.unitChipRow}>
+                      {groupedUnits[group].map((u) => {
+                        const active = formState.unit === u.value;
+                        return (
+                          <Pressable
+                            key={u.value}
+                            onPress={() => handleUnitSelect(u.value)}
+                            style={[styles.unitChip, active && styles.unitChipActive]}
+                          >
+                            <Text style={[styles.unitChipText, active && styles.unitChipTextActive]}>
+                              {u.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+              <Pressable style={styles.modalCloseButton} onPress={() => setUnitModalVisible(false)}>
+                <Text style={styles.modalCloseButtonText}>Close</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -550,8 +644,21 @@ const makeStyles = (colors: ThemeColors) =>
     },
     selector: {
       borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 16, backgroundColor: colors.bgInput,
-      paddingHorizontal: 14, paddingVertical: 16, minHeight: 56, justifyContent: "center"
+      paddingHorizontal: 14, paddingVertical: 16, minHeight: 56, flexDirection: "row",
+      justifyContent: "space-between", alignItems: "center"
     },
+    unitGroupLabel: {
+      fontSize: 11, fontWeight: "700", color: colors.textSubtle, textTransform: "uppercase",
+      letterSpacing: 1.5, marginTop: 12, marginBottom: 8
+    },
+    unitChipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    unitChip: {
+      paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999,
+      borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.bgInput
+    },
+    unitChipActive: { backgroundColor: colors.bgStrong, borderColor: colors.bgStrong },
+    unitChipText: { color: colors.textPrimary, fontSize: 14, fontWeight: "600" },
+    unitChipTextActive: { color: colors.textOnStrong },
     selectorLoading: { flexDirection: "row", alignItems: "center", gap: 10 },
     selectorText: { color: colors.textPrimary, fontSize: 15 },
     selectorPlaceholder: { color: colors.textMuted, fontSize: 15 },

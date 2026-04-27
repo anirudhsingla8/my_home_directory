@@ -91,12 +91,14 @@ body {
   color: var(--theme-text-primary);
 }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
-  color: inherit;
+@layer base {
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
 }
 
 #root {

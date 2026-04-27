@@ -1,7 +1,24 @@
 import axios from "axios";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { api, AuthResponse } from "../api";
 import { useAuth } from "../context/AuthContext";
+import { isPasswordValid, passwordRules } from "../lib/passwordPolicy";
+import { ThemeSwitcher } from "./ThemeSwitcher";
+import { ForgotPasswordModal } from "./ForgotPasswordModal";
+
+const EyeIcon = () => (
+  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+    <circle cx="12" cy="12" r="3"/>
+  </svg>
+);
+
+const EyeOffIcon = () => (
+  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/>
+    <line x1="1" y1="1" x2="23" y2="23"/>
+  </svg>
+);
 
 export function AuthScreen() {
   const { login } = useAuth();
@@ -11,10 +28,24 @@ export function AuthScreen() {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
+
+  const ruleResults = useMemo(
+    () => passwordRules.map((r) => ({ ...r, pass: r.test(password) })),
+    [password]
+  );
+  const passwordOk = isLogin || isPasswordValid(password);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (!isLogin && !passwordOk) {
+      setError("Password doesn't meet all the requirements yet.");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -79,7 +110,10 @@ export function AuthScreen() {
       </div>
 
       {/* Right form panel */}
-      <div className="flex flex-1 items-center justify-center bg-white px-6 py-12">
+      <div className="relative flex flex-1 items-center justify-center bg-white px-6 py-12">
+        <div className="absolute right-4 top-4 sm:right-6 sm:top-6">
+          <ThemeSwitcher />
+        </div>
         <div className="w-full max-w-[400px]">
           {/* Mobile logo */}
           <div className="mb-8 flex items-center gap-3 lg:hidden">
@@ -127,14 +161,42 @@ export function AuthScreen() {
 
             <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-700">Password</label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 placeholder-slate-400 transition focus:border-amber-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/20"
-                placeholder={isLogin ? "Enter your password" : "Min 6 characters"}
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 pr-10 text-slate-900 placeholder-slate-400 transition focus:border-amber-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/20"
+                  placeholder={isLogin ? "Enter your password" : "Create a strong password"}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+                </button>
+              </div>
+              {!isLogin && password.length > 0 && (
+                <ul className="mt-2 space-y-1 rounded-lg bg-slate-50 px-3 py-2.5">
+                  {ruleResults.map((r) => (
+                    <li key={r.id} className="flex items-center gap-2 text-xs">
+                      {r.pass ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-emerald-500" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-slate-300" viewBox="0 0 20 20" fill="currentColor">
+                          <circle cx="10" cy="10" r="4" />
+                        </svg>
+                      )}
+                      <span className={r.pass ? "text-slate-700" : "text-slate-500"}>{r.label}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             {error && (
@@ -148,11 +210,23 @@ export function AuthScreen() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || (!isLogin && !passwordOk)}
               className="w-full rounded-xl bg-slate-900 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:ring-offset-2 disabled:opacity-50"
             >
               {loading ? "Please wait..." : isLogin ? "Sign In" : "Create Account"}
             </button>
+
+            {isLogin && (
+              <div className="-mt-2 text-right">
+                <button
+                  type="button"
+                  onClick={() => setForgotOpen(true)}
+                  className="text-xs font-medium text-slate-500 transition hover:text-amber-600"
+                >
+                  Forgot password?
+                </button>
+              </div>
+            )}
           </form>
 
           <div className="mt-6 text-center">
@@ -167,6 +241,12 @@ export function AuthScreen() {
           </div>
         </div>
       </div>
+
+      <ForgotPasswordModal
+        open={forgotOpen}
+        initialEmail={email}
+        onClose={() => setForgotOpen(false)}
+      />
     </div>
   );
 }

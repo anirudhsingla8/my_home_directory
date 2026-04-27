@@ -138,7 +138,7 @@ function AlertsList({ alerts }: { alerts: Item[] }) {
       <Text style={styles.alertHeader}>Needs Attention ({alerts.length})</Text>
       <View style={{ gap: 8 }}>
         {alerts.slice(0, 6).map((item) => {
-          const isLowStock = item.quantity <= 1;
+          const isLowStock = item.quantity <= (item.minQuantity ?? 1);
           return (
             <View key={item.id} style={styles.alertRow}>
               <View style={[styles.alertDot, { backgroundColor: isLowStock ? colors.rose : colors.amber }]} />

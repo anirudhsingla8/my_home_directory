@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { Request, Response } from "express";
 
 import { prisma } from "../lib/prisma";
+import { logger } from "../lib/logger";
 import { uploadImageBuffer } from "../utils/storage";
 import {
   getStringValue,
@@ -11,6 +12,8 @@ import {
   parseDate,
   hasOwnProperty
 } from "../utils/helpers";
+
+const log = logger.child("items");
 
 const itemInclude = {
   category: true,
@@ -45,8 +48,11 @@ const validateItemRelations = async ({
     throw new Error("locationId references a missing location.");
   }
 
-  if (category.userId !== userId) {
-    throw new Error("Category must belong to you.");
+  // Categories are global (userId IS NULL). For backwards compatibility we
+  // also accept legacy per-user categories belonging to the same user — that
+  // way already-saved items can still be edited without re-categorising.
+  if (category.userId !== null && category.userId !== userId) {
+    throw new Error("Category not available.");
   }
 
   if (location.userId !== userId) {
@@ -60,6 +66,14 @@ export const createItem = async (req: Request, res: Response): Promise<Response>
 
     const name = parseRequiredString(req.body.name, "name");
     const quantity = parseNumber(req.body.quantity, "quantity");
+    const minQuantityRaw = req.body.minQuantity ?? req.body.min_quantity;
+    const minQuantity =
+      minQuantityRaw === undefined || minQuantityRaw === null || minQuantityRaw === ""
+        ? 1
+        : parseNumber(minQuantityRaw, "minQuantity");
+    if (minQuantity < 0) {
+      throw new Error("minQuantity cannot be negative.");
+    }
     const unit = parseRequiredString(req.body.unit, "unit");
     const categoryId = parseRequiredString(
       getStringValue(req.body.categoryId, req.body.category_id),
@@ -95,6 +109,7 @@ export const createItem = async (req: Request, res: Response): Promise<Response>
       data: {
         name,
         quantity,
+        minQuantity,
         unit,
         userId,
         categoryId,
@@ -109,7 +124,7 @@ export const createItem = async (req: Request, res: Response): Promise<Response>
 
     return res.status(201).json(item);
   } catch (error: unknown) {
-    console.error("Error creating item:", error);
+    log.error("Error creating item", { error: error instanceof Error ? error.message : String(error) });
 
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
       return res.status(400).json({
@@ -194,7 +209,7 @@ export const getItems = async (req: Request, res: Response): Promise<Response> =
       }
     });
   } catch (error) {
-    console.error("Error fetching items:", error);
+    log.error("Error fetching items", { error: error instanceof Error ? error.message : String(error) });
     return res.status(500).json({ message: "Failed to fetch items." });
   }
 };
@@ -223,7 +238,7 @@ export const getItemById = async (req: Request, res: Response): Promise<Response
 
     return res.status(200).json(item);
   } catch (error) {
-    console.error("Error fetching item:", error);
+    log.error("Error fetching item", { error: error instanceof Error ? error.message : String(error) });
     return res.status(500).json({ message: "Failed to fetch item." });
   }
 };
@@ -257,6 +272,14 @@ export const updateItem = async (req: Request, res: Response): Promise<Response>
 
     if (hasOwnProperty(req.body, "quantity")) {
       data.quantity = parseNumber(req.body.quantity, "quantity");
+    }
+
+    if (hasOwnProperty(req.body, "minQuantity") || hasOwnProperty(req.body, "min_quantity")) {
+      const raw = req.body.minQuantity ?? req.body.min_quantity;
+      const num =
+        raw === null || raw === undefined || raw === "" ? 1 : parseNumber(raw, "minQuantity");
+      if (num < 0) throw new Error("minQuantity cannot be negative.");
+      data.minQuantity = num;
     }
 
     if (hasOwnProperty(req.body, "unit")) {
@@ -319,7 +342,7 @@ export const updateItem = async (req: Request, res: Response): Promise<Response>
 
     return res.status(200).json(updatedItem);
   } catch (error: unknown) {
-    console.error("Error updating item:", error);
+    log.error("Error updating item", { error: error instanceof Error ? error.message : String(error) });
 
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
       return res.status(400).json({
@@ -361,7 +384,7 @@ export const deleteItem = async (req: Request, res: Response): Promise<Response>
 
     return res.status(200).json({ message: "Item deleted successfully." });
   } catch (error: unknown) {
-    console.error("Error deleting item:", error);
+    log.error("Error deleting item", { error: error instanceof Error ? error.message : String(error) });
 
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
       return res.status(404).json({ message: "Item not found." });
@@ -382,7 +405,7 @@ export const getAlertItems = async (req: Request, res: Response): Promise<Respon
       where: {
         userId,
         OR: [
-          { quantity: { lte: 1 } },
+          { quantity: { lte: prisma.item.fields.minQuantity } },
           { expiryDate: { lte: thirtyDaysFromNow, not: null } }
         ]
       },
@@ -392,7 +415,7 @@ export const getAlertItems = async (req: Request, res: Response): Promise<Respon
 
     return res.status(200).json(items);
   } catch (error) {
-    console.error("Error fetching alert items:", error);
+    log.error("Error fetching alert items", { error: error instanceof Error ? error.message : String(error) });
     return res.status(500).json({ message: "Failed to fetch alert items." });
   }
 };

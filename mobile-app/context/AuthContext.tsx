@@ -1,12 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { AuthResponse } from "../api";
+import { AuthResponse, AuthUser } from "../api";
 
 interface AuthContextType {
   token: string | null;
-  user: AuthResponse["user"] | null;
+  user: AuthUser | null;
   login: (authData: AuthResponse) => void;
   logout: () => void;
+  updateUser: (user: AuthUser) => void;
   isAuthenticated: boolean;
   isLoading: boolean;
 }
@@ -15,7 +16,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [token, setToken] = useState<string | null>(null);
-  const [user, setUser] = useState<AuthResponse["user"] | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -51,6 +52,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     await AsyncStorage.removeItem("auth_user");
   };
 
+  const updateUser = (next: AuthUser) => {
+    setUser(next);
+    void AsyncStorage.setItem("auth_user", JSON.stringify(next)).catch(() => {});
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -58,6 +64,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         user,
         login,
         logout,
+        updateUser,
         isAuthenticated: !!token,
         isLoading
       }}

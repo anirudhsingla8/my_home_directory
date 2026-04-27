@@ -176,7 +176,7 @@ export function InventoryList() {
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {items.map((item) => {
               const expiryStatus = getExpiryStatus(item.expiryDate);
-              const isLowStock = item.quantity <= 1;
+              const isLowStock = item.quantity <= (item.minQuantity ?? 1);
 
               return (
                 <article

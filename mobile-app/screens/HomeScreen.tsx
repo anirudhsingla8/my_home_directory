@@ -274,7 +274,7 @@ export default function HomeScreen({ onOpenAdd }: HomeScreenProps) {
         }
         renderItem={({ item }) => {
           const expiryStatus = getExpiryStatus(item.expiryDate);
-          const isLowStock = item.quantity <= 1;
+          const isLowStock = item.quantity <= (item.minQuantity ?? 1);
           const expiryColors = expiryBadgeColors[expiryStatus];
 
           return (

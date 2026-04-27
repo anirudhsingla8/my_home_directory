@@ -24,6 +24,7 @@ export interface Item {
   id: string;
   name: string;
   quantity: number;
+  minQuantity: number;
   unit: string;
   imageUrl: string | null;
   expiryDate: string | null;
@@ -54,6 +55,7 @@ export interface ItemQueryParams {
 export interface CreateItemPayload {
   name: string;
   quantity: number;
+  minQuantity?: number;
   unit: string;
   categoryId: string;
   locationId: string;
@@ -74,15 +76,65 @@ export interface Location {
   updatedAt: string;
 }
 
+export type Gender = "MALE" | "FEMALE" | "OTHER" | "PREFER_NOT_TO_SAY";
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string | null;
+  role: "ADMIN" | "USER";
+  gender?: Gender | null;
+  dateOfBirth?: string | null;
+}
+
 export interface AuthResponse {
   token: string;
-  user: {
-    id: string;
-    email: string;
-    name: string | null;
-    role: "ADMIN" | "USER";
-  };
+  user: AuthUser;
 }
+
+export interface UpdateProfilePayload {
+  name?: string | null;
+  gender?: Gender | null;
+  dateOfBirth?: string | null;
+}
+
+export const fetchMe = async (): Promise<AuthUser> => {
+  const response = await api.get<{ user: AuthUser }>("/auth/me");
+  return response.data.user;
+};
+
+export const updateProfile = async (payload: UpdateProfilePayload): Promise<AuthUser> => {
+  const response = await api.patch<{ user: AuthUser }>("/auth/profile", payload);
+  return response.data.user;
+};
+
+export const updatePassword = async (
+  currentPassword: string,
+  newPassword: string
+): Promise<void> => {
+  await api.patch("/auth/password", { currentPassword, newPassword });
+};
+
+export interface ForgotPasswordResponse {
+  message: string;
+  /** ISO timestamp when the next resend is allowed (drives the countdown). */
+  resendAvailableAt: string;
+}
+
+export const requestPasswordReset = async (
+  email: string
+): Promise<ForgotPasswordResponse> => {
+  const response = await api.post<ForgotPasswordResponse>("/auth/forgot-password", { email });
+  return response.data;
+};
+
+export const resetPasswordWithOtp = async (
+  email: string,
+  otp: string,
+  newPassword: string
+): Promise<void> => {
+  await api.post("/auth/reset-password", { email, otp, newPassword });
+};
 
 // ─── Axios Instance ──────────────────────────────────────────────────
 
@@ -200,6 +252,23 @@ export const createCategory = async (payload: CreateCategoryPayload): Promise<Ca
   return response.data;
 };
 
+export const renameCategory = async (id: string, name: string): Promise<CategoryNode> => {
+  const response = await api.patch<CategoryNode>(`/categories/${id}`, { name });
+  return response.data;
+};
+
+export const deleteCategory = async (id: string): Promise<void> => {
+  await api.delete(`/categories/${id}`);
+};
+
+// Admin-only — populates the global default tree. Idempotent.
+export const seedDefaultCategories = async (): Promise<{ created: number }> => {
+  const response = await api.post<{ created: number; message: string }>(
+    "/categories/seed-defaults"
+  );
+  return { created: response.data.created };
+};
+
 // ─── Location API ────────────────────────────────────────────────────
 
 export const fetchLocations = async (): Promise<Location[]> => {
@@ -233,6 +302,18 @@ interface IpWhoIsResponse {
 export const detectCityFromIP = async (
   signal?: AbortSignal
 ): Promise<string | null> => {
+  // Primary: ask our backend, which honours X-Forwarded-For and avoids any
+  // ad-blocker / corporate-firewall blocking ipwho.is from the browser.
+  try {
+    const res = await api.get<{ city: string | null }>("/locations/detect", { signal });
+    const city = res.data?.city?.trim();
+    if (city && city.toLowerCase() !== "unknown") return city;
+  } catch {
+    /* fall through to client-side */
+  }
+
+  // Fallback: direct call. Useful in local dev where the server sees a
+  // loopback IP and bails out, but the browser's external IP geolocates fine.
   try {
     const res = await fetch("https://ipwho.is/", { signal });
     if (!res.ok) return null;
@@ -317,6 +398,9 @@ export const createItem = async (payload: CreateItemPayload): Promise<Item> => {
 
   formData.append("name", payload.name);
   formData.append("quantity", String(payload.quantity));
+  if (payload.minQuantity !== undefined) {
+    formData.append("minQuantity", String(payload.minQuantity));
+  }
   formData.append("unit", payload.unit);
   formData.append("categoryId", payload.categoryId);
   formData.append("locationId", payload.locationId);
@@ -341,6 +425,7 @@ export const updateItem = async (itemId: string, payload: Partial<CreateItemPayl
 
   if (payload.name) formData.append("name", payload.name);
   if (payload.quantity !== undefined) formData.append("quantity", String(payload.quantity));
+  if (payload.minQuantity !== undefined) formData.append("minQuantity", String(payload.minQuantity));
   if (payload.unit) formData.append("unit", payload.unit);
   if (payload.categoryId) formData.append("categoryId", payload.categoryId);
   if (payload.locationId) formData.append("locationId", payload.locationId);
@@ -356,4 +441,56 @@ export const updateItem = async (itemId: string, payload: Partial<CreateItemPayl
 
 export const deleteItem = async (itemId: string): Promise<void> => {
   await api.delete(`/items/${itemId}`);
+};
+
+// ─── Shopping List API ──────────────────────────────────────────────
+
+export interface ShoppingListItem {
+  id: string;
+  name: string;
+  quantity: number;
+  unit: string | null;
+  notes: string | null;
+  completed: boolean;
+  completedAt: string | null;
+  createdFromItemId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const fetchShoppingList = async (): Promise<ShoppingListItem[]> => {
+  const response = await api.get<ShoppingListItem[]>("/shopping-list");
+  return response.data;
+};
+
+export const addShoppingItem = async (payload: {
+  name: string;
+  quantity?: number;
+  unit?: string | null;
+  notes?: string | null;
+}): Promise<ShoppingListItem> => {
+  const response = await api.post<ShoppingListItem>("/shopping-list", payload);
+  return response.data;
+};
+
+export const addShoppingFromItem = async (itemId: string): Promise<ShoppingListItem> => {
+  const response = await api.post<ShoppingListItem>(`/shopping-list/from-item/${itemId}`);
+  return response.data;
+};
+
+export const updateShoppingItem = async (
+  id: string,
+  patch: Partial<{ name: string; quantity: number; unit: string | null; notes: string | null; completed: boolean }>
+): Promise<ShoppingListItem> => {
+  const response = await api.patch<ShoppingListItem>(`/shopping-list/${id}`, patch);
+  return response.data;
+};
+
+export const deleteShoppingItem = async (id: string): Promise<void> => {
+  await api.delete(`/shopping-list/${id}`);
+};
+
+export const clearCompletedShoppingItems = async (): Promise<{ deleted: number }> => {
+  const response = await api.post<{ deleted: number }>("/shopping-list/clear-completed");
+  return response.data;
 };
